@@ -6,34 +6,56 @@ const Tty = @import("Tty.zig");
 const util = @import("util.zig");
 const App = @This();
 
+const Match = struct {
+    original_str: []const u8,
+    lower_str: []const u8,
+    pattern: []bool,
+    score: f64,
+};
+
 tty: *Tty,
-choices: []const []const u8,
+arena_state: std.heap.ArenaAllocator.State,
 /// indexes into choices
-matching: []const usize,
-match_buf: []usize,
-selected: usize,
+matches: []Match,
+selected: usize = 0,
 search_str: []u8,
 search_buf: [256]u8,
 
 pub fn init(gpa: Allocator, tty: *Tty, choices: []const []const u8) !App {
+    var arena_impl: std.heap.ArenaAllocator = .init(gpa);
+    errdefer arena_impl.deinit();
+
+    const arena = arena_impl.allocator();
+
     var app: App = undefined;
-    const match_buf = try gpa.alloc(usize, choices.len);
+    const matches = try arena.alloc(Match, choices.len);
+    for (choices, 0..) |choice, i| {
+        const pattern = try arena.alloc(bool, choice.len);
+        @memset(pattern, false);
+        matches[i] = Match{
+            .lower_str = try util.lowerStringAlloc(arena, choice),
+            .original_str = choice,
+            .pattern = pattern,
+            .score = -std.math.floatMin(f64),
+        };
+    }
     app.tty = tty;
-    app.choices = choices;
     app.selected = 0;
-    app.match_buf = match_buf;
+    app.matches = matches;
     app.search_buf = undefined;
+    app.arena_state = arena_impl.state;
+
     return app;
 }
 
 pub fn deinit(app: *App, gpa: Allocator) void {
-    gpa.free(app.match_buf);
+    var arena = app.arena_state.promote(gpa);
+    arena.deinit();
 }
 
 pub fn run(app: *App, io: Io, gpa: Allocator) !void {
     const tty = app.tty;
     app.search_str = app.search_buf[0..0];
-    app.matching = app.match_buf[0..0];
     _ = gpa;
     _ = io;
 
@@ -44,7 +66,7 @@ pub fn run(app: *App, io: Io, gpa: Allocator) !void {
         if (maybe_c) |c| switch (c) {
             util.ctrl('c') => return,
             util.ctrl('p') => {
-                app.selected += 1;
+                if (app.selected < app.matches.len) app.selected += 1;
             },
             util.ctrl('n') => {
                 if (app.selected > 0) app.selected -= 1;
@@ -80,15 +102,23 @@ pub fn draw(app: *App) !void {
     try tty.clearLine();
     try tty.print("{s}{s}", .{ prompt, app.search_str });
 
-    const min = @min(tty.max_height - 1, app.choices.len);
-    for (0..min) |i| {
-        const row = tty.max_height - 1 - i;
+    const max_window_height = @min(tty.max_height - 1, app.matches.len);
+    var start: usize = 0;
 
+    if (app.selected >= max_window_height) {
+        start = app.selected - max_window_height + 1;
+    }
+
+    var end = start + max_window_height;
+    if (end > app.matches.len) end = app.matches.len;
+
+    var row = tty.max_height - 1;
+    for (start..end) |i| {
         try tty.moveTo(row, 1);
 
         try tty.clearLine();
 
-        const str = app.choices[i];
+        const str = app.matches[i].original_str;
 
         const max_len = @min(tty.max_width, str.len);
         if (app.selected == i) {
@@ -105,6 +135,8 @@ pub fn draw(app: *App) !void {
             try tty.print("\x1b[38;2;100;100;100m▌\x1b[m", .{});
             try tty.print("  {s}", .{str[0..max_len]});
         }
+
+        row -= 1;
     }
 
     try tty.moveTo(tty.max_height, prompt.len + app.search_str.len + 1);
