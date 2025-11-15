@@ -21,4 +21,6 @@ pub fn build(b: *std.Build) void {
 
     const run_step = b.step("run", "run executable");
     run_step.dependOn(&run_exe.step);
+
+    if (b.args) |args| run_exe.addArgs(args);
 }
