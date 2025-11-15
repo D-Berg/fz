@@ -34,14 +34,16 @@ pub fn main() !void {
         var stdin_reader = std.Io.File.stdin().reader(io, &stdin_buf);
         const stdin = &stdin_reader.interface;
 
+        var arena_impl: std.heap.ArenaAllocator = .init(gpa);
+        defer arena_impl.deinit();
+
+        const arena = arena_impl.allocator();
+
         var lines: std.ArrayList([]const u8) = .empty;
-        defer {
-            for (lines.items) |line| gpa.free(line);
-            lines.deinit(gpa);
-        }
+
         while (try stdin.takeDelimiter('\n')) |line| {
-            try lines.ensureUnusedCapacity(gpa, 1);
-            lines.appendAssumeCapacity(try gpa.dupe(u8, line));
+            try lines.ensureUnusedCapacity(arena, 1);
+            lines.appendAssumeCapacity(try arena.dupe(u8, line));
         }
 
         std.debug.print("got all input\n", .{});
