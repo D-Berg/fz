@@ -40,10 +40,15 @@ pub fn init(io: std.Io, path: []const u8, read_buf: []u8, write_buf: []u8) !Tty 
 
     try tty.setNormal();
 
+    try tty.enterAltScreen();
+    try tty.flush();
+
     return tty;
 }
 
 pub fn deinit(self: *Tty) void {
+    self.exitAltScreen() catch {};
+    self.flush() catch {};
     self.resetTermios();
     self.in.file.close(self.in.io);
 }
@@ -91,34 +96,42 @@ pub fn setunderline(self: *Tty) !void {
     try self.setSGR(4);
 }
 
+pub fn print(self: *Tty, comptime fmt: []const u8, args: anytype) !void {
+    try self.out.interface.print(fmt, args);
+}
+
 pub fn setNoWrap(self: *Tty) !void {
-    try self.out.interface.print("{c}{c}?7l", .{ 0x1b, '[' });
+    try self.print("{c}{c}?7l", .{ 0x1b, '[' });
 }
 
 pub fn setWrap(self: *Tty) !void {
-    try self.out.interface.print("{c}{c}?7h", .{ 0x1b, '[' });
+    try self.print("{c}{c}?7h", .{ 0x1b, '[' });
 }
 
 pub fn newLine(self: *Tty) !void {
-    try self.out.interface.print("{c}{c}K\n", .{ 0x1b, '[' });
+    try self.print("{c}{c}K\n", .{ 0x1b, '[' });
 }
 
 pub fn clearLine(self: *Tty) !void {
-    try self.out.interface.print("{c}{c}K", .{ 0x1b, '[' });
+    try self.print("{c}{c}K", .{ 0x1b, '[' });
 }
 
 pub fn setCol(self: *Tty, col: usize) !void {
-    try self.out.interface.print("{c}{c}{d}G", .{ 0x1b, '[', col + 1 });
+    try self.print("{c}{c}{d}G", .{ 0x1b, '[', col + 1 });
 }
 
 pub fn moveUp(self: *Tty, i: usize) !void {
-    try self.out.interface.print("{c}{c}{d}A", .{ 0x1b, '[', i });
+    try self.print("{c}{c}{d}A", .{ 0x1b, '[', i });
 }
 
 pub fn putChar(self: *Tty, c: u8) !void {
-    try self.out.interface.print("{c}", .{c});
+    try self.print("{c}", .{c});
 }
 
-pub fn print(self: *Tty, comptime fmt: []const u8, args: anytype) !void {
-    try self.out.interface.print(fmt, args);
+pub fn enterAltScreen(self: *Tty) !void {
+    try self.print("\x1b[?1049h", .{});
+}
+
+pub fn exitAltScreen(self: *Tty) !void {
+    try self.print("\x1b[?1049l", .{});
 }
