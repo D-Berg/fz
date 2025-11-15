@@ -4,7 +4,7 @@ const Tty = @This();
 
 in: std.fs.File.Reader,
 out: std.fs.File.Writer,
-termios: std.posix.termios,
+original_termios: std.posix.termios,
 fg_col: usize = 0,
 max_width: usize = 80,
 max_height: usize = 25,
@@ -17,23 +17,29 @@ pub fn init(io: std.Io, path: []const u8, read_buf: []u8, write_buf: []u8) !Tty 
     const writer = tty_file.writer(write_buf);
 
     var termios = try std.posix.tcgetattr(tty_file.handle);
+    var tty: Tty = .{
+        .in = reader,
+        .out = writer,
+        .original_termios = termios,
+    };
+
     // Disable all of
     // ICANON  Canonical input (erase and kill processing).
     // ECHO    Echo.
     // ISIG    Signals from control characters
     // ICRNL   Conversion of CR characters into NL
-
     termios.iflag.ICRNL = false;
     termios.lflag.ECHO = false;
     termios.lflag.ICANON = false;
     termios.lflag.ISIG = false;
 
+    const VMIN: usize = @intCast(@intFromEnum(std.posix.V.MIN));
+    const VTIME: usize = @intCast(@intFromEnum(std.posix.V.TIME));
+
+    termios.cc[VMIN] = 0;
+    termios.cc[VTIME] = 1;
+
     try std.posix.tcsetattr(tty_file.handle, .NOW, termios);
-    var tty: Tty = .{
-        .in = reader,
-        .out = writer,
-        .termios = termios,
-    };
     errdefer tty.resetTermios();
 
     tty.getWinSize();
@@ -54,12 +60,7 @@ pub fn deinit(self: *Tty) void {
 }
 
 pub fn resetTermios(self: *Tty) void {
-    self.termios.iflag.ICRNL = true;
-    self.termios.lflag.ECHO = true;
-    self.termios.lflag.ICANON = true;
-    self.termios.lflag.ISIG = true;
-
-    std.posix.tcsetattr(self.in.file.handle, .NOW, self.termios) catch {};
+    std.posix.tcsetattr(self.in.file.handle, .NOW, self.original_termios) catch {};
 }
 
 pub fn getWinSize(self: *Tty) void {

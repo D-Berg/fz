@@ -35,27 +35,12 @@ pub fn run(app: *App, io: Io, gpa: Allocator) !void {
     app.search_str = app.search_buf[0..0];
     app.matching = app.match_buf[0..0];
     _ = gpa;
+    _ = io;
 
+    var buf: [1]u8 = undefined;
     while (true) {
-        var read_fut = io.async(Tty.readOne, .{tty});
-        defer _ = read_fut.cancel(io) catch {};
-
-        var timeout_fut = io.async(Io.sleep, .{ io, .fromMilliseconds(1), .real });
-        defer timeout_fut.cancel(io) catch {};
-
-        const maybe_c = blk: {
-            switch (try io.select(.{
-                .read_fut = &read_fut,
-                .timeout_fut = &timeout_fut,
-            })) {
-                .read_fut => |res| {
-                    break :blk try res;
-                },
-
-                .timeout_fut => break :blk null,
-            }
-        };
-
+        const n_read = try tty.in.interface.readSliceShort(&buf);
+        const maybe_c = if (n_read == 1) buf[0] else null;
         if (maybe_c) |c| switch (c) {
             util.ctrl('c') => return,
             127 => {
