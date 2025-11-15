@@ -148,6 +148,14 @@ pub fn moveTo(self: *Tty, row: usize, col: usize) !void {
     try self.print("\x1b[{d};{d}H", .{ row + 1, col + 1 });
 }
 
+pub fn hideCursor(self: *Tty) !void {
+    try self.print("\x1b[?25l", .{});
+}
+
+pub fn showCursor(self: *Tty) !void {
+    try self.print("\x1b[?25h", .{});
+}
+
 pub fn readOne(self: *Tty) !u8 {
     var buf: [1]u8 = undefined;
     try self.in.interface.readSliceAll(&buf);

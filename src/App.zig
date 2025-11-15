@@ -83,10 +83,11 @@ pub fn draw(app: *App) !void {
     const tty = app.tty;
     tty.getWinSize();
 
-    try tty.print("\x1b[?25l", .{});
+    try tty.hideCursor();
 
     try tty.moveTo(tty.max_height, 1);
-    try tty.print("\x1b[2K{s}{s}", .{ prompt, app.search_str });
+    try tty.clearLine();
+    try tty.print("{s}{s}", .{ prompt, app.search_str });
 
     const min = @min(5, app.choices.len);
     for (0..min) |i| {
@@ -104,7 +105,7 @@ pub fn draw(app: *App) !void {
     try tty.moveTo(tty.max_height, prompt.len + app.search_str.len + 1);
 
     // Show cursor
-    try tty.print("\x1b[?25h", .{});
+    try tty.showCursor();
 
     try tty.flush();
 }
