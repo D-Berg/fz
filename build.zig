@@ -5,6 +5,11 @@ pub fn build(b: *std.Build) void {
     const target = b.resolveTargetQuery(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const use_simd = b.option(bool, "simd", "Use simd") orelse true;
+
+    const build_options = b.addOptions();
+    build_options.addOption(@TypeOf(use_simd), "use_simd", use_simd);
+
     const exe = b.addExecutable(.{
         .name = @tagName(manifest.name),
         .root_module = b.createModule(.{
@@ -13,6 +18,8 @@ pub fn build(b: *std.Build) void {
             .target = target,
         }),
     });
+
+    exe.root_module.addOptions("build_options", build_options);
 
     b.installArtifact(exe);
 
