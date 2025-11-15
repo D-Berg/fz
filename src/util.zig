@@ -39,6 +39,11 @@ fn lowerString(output: []u8, ascii_str: []const u8) []u8 {
     return output[0..ascii_str.len];
 }
 
+/// ctrl + char
+pub fn ctrl(k: u8) u8 {
+    return k & 0x1f;
+}
+
 test lowerString {
     var buf: [4096]u8 = undefined;
     const result = lowerString(&buf, "aBcDeFgHiJ/kLmNOPqrst0234+💩!");

@@ -1,7 +1,8 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const assert = std.debug.assert;
-const Tty = @import("tty.zig");
+const Tty = @import("Tty.zig");
+const App = @import("App.zig");
 
 var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
 
@@ -55,35 +56,13 @@ pub fn main() !void {
         var tty: Tty = try .init(io, "/dev/tty", &read_buf, &write_buf);
         defer tty.deinit();
 
-        // for (lines.items) |line| {
-        //     try tty.print("{s}", .{line});
-        //     try tty.newLine();
-        // }
-        // try tty.flush();
+        var app: App = try .init(gpa, &tty, lines.items);
+        defer app.deinit(gpa);
 
-        loop: while (tty.in.interface.take(1)) |in| {
-            const c = in[0];
-            switch (c) {
-                ctrl('c') => break :loop,
+        try app.run(io, gpa);
 
-                else => {
-                    try tty.newLine();
-
-                    for (lines.items[0..5]) |line| {
-                        try tty.clearLine();
-                        try tty.print("{s}\n", .{line});
-                    }
-                    try tty.moveUp(5);
-                    try tty.flush();
-                },
-            }
-        } else |_| return;
         std.debug.print("goodbye\n", .{});
     }
-}
-
-fn ctrl(k: u8) u8 {
-    return k & 0x1f;
 }
 
 const MATCH_MAX_LEN = 1024;

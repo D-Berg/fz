@@ -116,12 +116,20 @@ pub fn clearLine(self: *Tty) !void {
     try self.print("{c}{c}K", .{ 0x1b, '[' });
 }
 
+pub fn clearScreen(self: *Tty) !void {
+    try self.print("\x1b[1J", .{});
+}
+
 pub fn setCol(self: *Tty, col: usize) !void {
     try self.print("{c}{c}{d}G", .{ 0x1b, '[', col + 1 });
 }
 
 pub fn moveUp(self: *Tty, i: usize) !void {
     try self.print("{c}{c}{d}A", .{ 0x1b, '[', i });
+}
+
+pub fn moveDown(self: *Tty, i: usize) !void {
+    try self.print("{c}{c}{d}B", .{ 0x1b, '[', i });
 }
 
 pub fn putChar(self: *Tty, c: u8) !void {
@@ -134,4 +142,14 @@ pub fn enterAltScreen(self: *Tty) !void {
 
 pub fn exitAltScreen(self: *Tty) !void {
     try self.print("\x1b[?1049l", .{});
+}
+
+pub fn moveTo(self: *Tty, row: usize, col: usize) !void {
+    try self.print("\x1b[{d};{d}H", .{ row + 1, col + 1 });
+}
+
+pub fn readOne(self: *Tty) !u8 {
+    var buf: [1]u8 = undefined;
+    try self.in.interface.readSliceAll(&buf);
+    return buf[0];
 }
