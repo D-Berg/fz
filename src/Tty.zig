@@ -67,7 +67,7 @@ pub fn getWinSize(self: *Tty) void {
     var winsize: std.posix.winsize = undefined;
     const result = std.c.ioctl(self.out.file.handle, std.posix.T.IOCGWINSZ, &winsize);
 
-    if (result != -1) {
+    if (result == -1) {
         self.max_width = 80;
         self.max_height = 25;
     } else {
@@ -146,7 +146,7 @@ pub fn exitAltScreen(self: *Tty) !void {
 }
 
 pub fn moveTo(self: *Tty, row: usize, col: usize) !void {
-    try self.print("\x1b[{d};{d}H", .{ row + 1, col + 1 });
+    try self.print("\x1b[{d};{d}H", .{ row, col });
 }
 
 pub fn hideCursor(self: *Tty) !void {

@@ -43,6 +43,12 @@ pub fn run(app: *App, io: Io, gpa: Allocator) !void {
         const maybe_c = if (n_read == 1) buf[0] else null;
         if (maybe_c) |c| switch (c) {
             util.ctrl('c') => return,
+            util.ctrl('p') => {
+                app.selected += 1;
+            },
+            util.ctrl('n') => {
+                if (app.selected > 0) app.selected -= 1;
+            },
             127 => {
                 // backspace
                 if (app.search_str.len > 0) {
@@ -74,7 +80,7 @@ pub fn draw(app: *App) !void {
     try tty.clearLine();
     try tty.print("{s}{s}", .{ prompt, app.search_str });
 
-    const min = @min(5, app.choices.len);
+    const min = @min(tty.max_height - 1, app.choices.len);
     for (0..min) |i| {
         const row = tty.max_height - 1 - i;
 
@@ -83,8 +89,22 @@ pub fn draw(app: *App) !void {
         try tty.clearLine();
 
         const str = app.choices[i];
+
         const max_len = @min(tty.max_width, str.len);
-        try tty.print("{s}", .{str[0..max_len]});
+        if (app.selected == i) {
+            try tty.print("\x1b[38;2;197;41;96m", .{}); // red
+            try tty.print("\x1b[48;2;100;100;100m", .{});
+            try tty.print("▌", .{});
+            try tty.print("\x1b[m", .{});
+
+            try tty.print("\x1b[48;2;100;100;100m", .{});
+
+            try tty.print("  {s}", .{str[0..max_len]});
+            try tty.print("\x1b[m", .{});
+        } else {
+            try tty.print("\x1b[38;2;100;100;100m▌\x1b[m", .{});
+            try tty.print("  {s}", .{str[0..max_len]});
+        }
     }
 
     try tty.moveTo(tty.max_height, prompt.len + app.search_str.len + 1);
