@@ -2,10 +2,11 @@ const std = @import("std");
 
 const manifest = @import("build.zig.zon");
 pub fn build(b: *std.Build) void {
-    const target = b.resolveTargetQuery(.{});
+    const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
     const use_simd = b.option(bool, "simd", "Use simd") orelse true;
+    const strip = b.option(bool, "strip", "strip executable") orelse false;
 
     const build_options = b.addOptions();
     build_options.addOption(@TypeOf(use_simd), "use_simd", use_simd);
@@ -16,9 +17,10 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/main.zig"),
             .optimize = optimize,
             .target = target,
+            .link_libc = true,
             // TODO: test for release
-            // .unwind_tables = .none,
-            // .strip = true,
+            .strip = strip,
+            .unwind_tables = if (strip) .none else null,
         }),
     });
 
