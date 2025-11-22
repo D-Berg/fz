@@ -1,17 +1,14 @@
 const std = @import("std");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
+const assert = std.debug.assert;
 
 const Tty = @import("Tty.zig");
+const Match = @import("Match.zig");
 const util = @import("util.zig");
-const App = @This();
 
-const Match = struct {
-    original_str: []const u8,
-    lower_str: []const u8,
-    pattern: []bool,
-    score: f64,
-};
+const App = @This();
+const MAX_SEARCH_LEN = 1024;
 
 tty: *Tty,
 arena_state: std.heap.ArenaAllocator.State,
@@ -19,9 +16,11 @@ arena_state: std.heap.ArenaAllocator.State,
 matches: []Match,
 selected: usize = 0,
 search_str: []u8,
-search_buf: [256]u8,
+search_buf: [MAX_SEARCH_LEN]u8,
 
 pub fn init(gpa: Allocator, tty: *Tty, choices: []const []const u8) !App {
+    assert(choices.len > 0);
+
     var arena_impl: std.heap.ArenaAllocator = .init(gpa);
     errdefer arena_impl.deinit();
 
@@ -36,7 +35,8 @@ pub fn init(gpa: Allocator, tty: *Tty, choices: []const []const u8) !App {
             .lower_str = try util.lowerStringAlloc(arena, choice),
             .original_str = choice,
             .pattern = pattern,
-            .score = -std.math.floatMin(f64),
+            .score = Match.score_min,
+            .idx = i,
         };
     }
     app.tty = tty;
@@ -53,11 +53,14 @@ pub fn deinit(app: *App, gpa: Allocator) void {
     arena.deinit();
 }
 
-pub fn run(app: *App, io: Io, gpa: Allocator) !void {
+pub fn run(app: *App, io: Io, gpa: Allocator, result: *?[]const u8) !void {
     const tty = app.tty;
     app.search_str = app.search_buf[0..0];
-    _ = gpa;
     _ = io;
+
+    try app.draw();
+
+    try app.updateMatches(gpa);
 
     var buf: [1]u8 = undefined;
     while (true) {
@@ -75,14 +78,21 @@ pub fn run(app: *App, io: Io, gpa: Allocator) !void {
                 // backspace
                 if (app.search_str.len > 0) {
                     app.search_str.len -= 1;
+                    try app.updateMatches(gpa);
                 }
             },
 
+            '\r', '\n' => {
+                result.* = app.matches[app.selected].original_str;
+                return;
+            },
             else => {
                 const at = app.search_str.len;
-                if (at < app.search_buf.len) {
+                if (at < MAX_SEARCH_LEN) {
                     app.search_str.len += 1;
                     app.search_str[at] = c;
+
+                    try app.updateMatches(gpa);
                 }
             },
         };
@@ -100,6 +110,8 @@ pub fn draw(app: *App) !void {
 
     try tty.moveTo(tty.max_height, 1);
     try tty.clearLine();
+
+    // TODO: handle input longer than tty width
     try tty.print("{s}{s}", .{ prompt, app.search_str });
 
     const max_window_height = @min(tty.max_height - 1, app.matches.len);
@@ -120,7 +132,7 @@ pub fn draw(app: *App) !void {
 
         const str = app.matches[i].original_str;
 
-        const max_len = @min(tty.max_width, str.len);
+        const max_len = @min(tty.max_width - 10, str.len);
         if (app.selected == i) {
             try tty.print("\x1b[38;2;197;41;96m", .{}); // red
             try tty.print("\x1b[48;2;100;100;100m", .{});
@@ -145,4 +157,33 @@ pub fn draw(app: *App) !void {
     try tty.showCursor();
 
     try tty.flush();
+}
+
+pub fn updateMatches(app: *App, gpa: Allocator) !void {
+    _ = gpa;
+    if (app.search_str.len == 0) {
+        // restore to original
+        std.mem.sort(Match, app.matches, {}, struct {
+            fn lessThanFn(_: void, a: Match, b: Match) bool {
+                // ascending based on idx
+                return a.idx < b.idx;
+            }
+        }.lessThanFn);
+
+        return;
+    }
+
+    var buf: [MAX_SEARCH_LEN]u8 = undefined;
+    const needle = util.lowerString(&buf, app.search_str);
+
+    for (app.matches) |*match| {
+        match.updateScore(needle);
+    }
+
+    std.mem.sort(Match, app.matches, {}, struct {
+        fn lessThanFn(_: void, a: Match, b: Match) bool {
+            // descending based on score
+            return a.score > b.score;
+        }
+    }.lessThanFn);
 }

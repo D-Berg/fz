@@ -33,4 +33,14 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_exe.step);
 
     if (b.args) |args| run_exe.addArgs(args);
+
+    const test_exe = b.addTest(.{
+        .root_module = exe.root_module,
+    });
+
+    const run_test_exe = b.addRunArtifact(test_exe);
+    run_test_exe.step.dependOn(&test_exe.step);
+
+    const run_test_step = b.step("test", "run unit tests");
+    run_test_step.dependOn(&run_test_exe.step);
 }

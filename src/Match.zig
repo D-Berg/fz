@@ -1,32 +1,37 @@
 const std = @import("std");
 const build_options = @import("build_options");
+
 const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
 
-const MATCH_MAX_LEN = std.posix.PATH_MAX;
-const score_min = -std.math.inf(f64);
-const score_max = std.math.inf(f64);
+pub const score_min = -std.math.inf(f64);
+pub const score_max = std.math.inf(f64);
 
-const Match = struct {
-    haystack_lower: []const u8,
-    needle_lower: []const u8,
-    match_bonus: []u8,
+const Match = @This();
 
-    pub fn init(gpa: Allocator, haystack: []const u8, needle: []const u8) !Match {
-        _ = gpa;
-        _ = haystack;
-        _ = needle;
+original_str: []const u8,
+lower_str: []const u8,
+pattern: []bool,
+idx: usize,
+score: f64,
+
+pub fn updateScore(self: *Match, needle: []const u8) void {
+    const haystack = self.lower_str;
+
+    self.score = score_min;
+
+    if (hasMatch(haystack, needle)) {
+        if (std.mem.find(u8, haystack, needle)) |_| {
+            self.score = score_max;
+        }
     }
-
-    // pub fn findPositions(
-
-};
+}
 
 fn match(haystack: []const u8, needle: []const u8) f64 {
     const m = haystack.len;
     const n = needle.len;
 
-    if (m > MATCH_MAX_LEN or n > m) {
+    if (n > m) {
         return score_min;
     }
 
@@ -59,4 +64,8 @@ fn hasMatch(haystack: []const u8, needle: []const u8) bool {
 
 test hasMatch {
     try std.testing.expect(hasMatch("AxBxC", "abc"));
+}
+
+test "score" {
+    try std.testing.expect(score_min < score_max);
 }

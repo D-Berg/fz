@@ -1,6 +1,8 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const assert = std.debug.assert;
+const Io = std.Io;
+const Allocator = std.mem.Allocator;
 const Tty = @import("Tty.zig");
 const App = @import("App.zig");
 
@@ -29,10 +31,13 @@ pub fn main() !void {
         std.debug.print("you werent piped to\n", .{});
         // TODO: get data from default command
     } else {
-        std.debug.print("you got piped data\n", .{});
         var stdin_buf: [4096]u8 = undefined;
         var stdin_reader = std.Io.File.stdin().reader(io, &stdin_buf);
         const stdin = &stdin_reader.interface;
+
+        var stdout_buf: [4096]u8 = undefined;
+        var stdout_writer = std.fs.File.stdout().writer(&stdout_buf);
+        const stdout = &stdout_writer.interface;
 
         var arena_impl: std.heap.ArenaAllocator = .init(gpa);
         defer arena_impl.deinit();
@@ -46,23 +51,32 @@ pub fn main() !void {
             lines.appendAssumeCapacity(try arena.dupe(u8, line));
         }
 
-        std.debug.print("got all input\n", .{});
-
         const args = try std.process.argsAlloc(gpa);
         defer std.process.argsFree(gpa, args);
 
-        // const search_str = args[1];
-        var read_buf: [1024]u8 = undefined;
-        var write_buf: [1024]u8 = undefined;
-
-        var tty: Tty = try .init(io, "/dev/tty", &read_buf, &write_buf);
-        defer tty.deinit();
-
-        var app: App = try .init(gpa, &tty, lines.items);
-        defer app.deinit(gpa);
-
-        try app.run(io, gpa);
-
-        std.debug.print("goodbye\n", .{});
+        if (try findStr(io, gpa, lines.items)) |result| {
+            try stdout.print("{s}\n", .{result});
+            try stdout.flush();
+        }
     }
+}
+
+pub fn findStr(io: Io, gpa: Allocator, lines: []const []const u8) !?[]const u8 {
+    var write_buf: [1024]u8 = undefined;
+
+    var tty: Tty = try .init(io, "/dev/tty", &.{}, &write_buf);
+    defer tty.deinit();
+
+    var app: App = try .init(gpa, &tty, lines);
+    defer app.deinit(gpa);
+
+    var result: ?[]const u8 = null;
+
+    try app.run(io, gpa, &result);
+
+    return result;
+}
+
+test "all" {
+    std.testing.refAllDeclsRecursive(@This());
 }
