@@ -130,22 +130,26 @@ pub fn draw(app: *App) !void {
 
         try tty.clearLine();
 
+        const match = app.matches[i];
+
         const str = app.matches[i].original_str;
-
         const max_len = @min(tty.max_width - 10, str.len);
-        if (app.selected == i) {
-            try tty.print("\x1b[38;2;197;41;96m", .{}); // red
-            try tty.print("\x1b[48;2;100;100;100m", .{});
-            try tty.print("▌", .{});
-            try tty.print("\x1b[m", .{});
 
-            try tty.print("\x1b[48;2;100;100;100m", .{});
+        if (app.search_str.len == 0 or match.score > 0) {
+            if (app.selected == i) {
+                try tty.print("\x1b[38;2;197;41;96m", .{}); // red
+                try tty.print("\x1b[48;2;100;100;100m", .{});
+                try tty.print("▌", .{});
+                try tty.print("\x1b[m", .{});
 
-            try tty.print("  {s}", .{str[0..max_len]});
-            try tty.print("\x1b[m", .{});
-        } else {
-            try tty.print("\x1b[38;2;100;100;100m▌\x1b[m", .{});
-            try tty.print("  {s}", .{str[0..max_len]});
+                try tty.print("\x1b[48;2;100;100;100m", .{});
+
+                try tty.print("  {s}", .{str[0..max_len]});
+                try tty.print("\x1b[m", .{});
+            } else {
+                try tty.print("\x1b[38;2;100;100;100m▌\x1b[m", .{});
+                try tty.print("  {s}", .{str[0..max_len]});
+            }
         }
 
         row -= 1;
