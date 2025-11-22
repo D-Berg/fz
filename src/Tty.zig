@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 const Tty = @This();
 
@@ -65,9 +66,13 @@ pub fn resetTermios(self: *Tty) void {
 
 pub fn getWinSize(self: *Tty) void {
     var winsize: std.posix.winsize = undefined;
-    const result = std.c.ioctl(self.out.file.handle, std.posix.T.IOCGWINSZ, &winsize);
 
-    if (result == -1) {
+    const rc = switch (builtin.os.tag) {
+        // prevents need to link libc on linux
+        .linux => std.os.linux.ioctl(self.out.file.handle, std.posix.T.IOCGWINSZ, @intFromPtr(&winsize)),
+        else => std.c.ioctl(self.out.file.handle, std.posix.T.IOCGWINSZ, &winsize),
+    };
+    if (rc == -1) {
         self.max_width = 80;
         self.max_height = 25;
     } else {

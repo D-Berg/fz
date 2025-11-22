@@ -17,7 +17,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/main.zig"),
             .optimize = optimize,
             .target = target,
-            .link_libc = true,
+            .link_libc = false,
             .strip = strip,
             .unwind_tables = if (strip) .none else null,
         }),
