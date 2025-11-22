@@ -18,7 +18,6 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .target = target,
             .link_libc = true,
-            // TODO: test for release
             .strip = strip,
             .unwind_tables = if (strip) .none else null,
         }),
