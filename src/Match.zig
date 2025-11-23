@@ -8,6 +8,8 @@ const assert = std.debug.assert;
 pub const score_min = -std.math.inf(f64);
 pub const score_max = std.math.inf(f64);
 
+const MAX_SEARCH_LEN = build_options.MAX_SEARCH_LEN;
+
 const SCORE_GAP_LEADING = -0.005;
 const SCORE_GAP_TRAILING = -0.005;
 const SCORE_GAP_INNER = -0.01;
@@ -66,6 +68,33 @@ fn calculateBonus(bonus: []f64, haystack: []const u8) void {
 
         last_char = c;
     }
+}
+
+// TODO: update concurrently
+/// Returns a slice into matches and update each match score
+pub fn updateMatches(gpa: Allocator, search_str: []const u8, matches: []Match) ![]const Match {
+    if (search_str.len == 0) {
+        // restore to original
+        Match.sortMatches(matches, Match.orderByIdx);
+        for (matches) |*match| match.score = Match.score_min;
+        return matches[0..];
+    }
+
+    var buf: [MAX_SEARCH_LEN]u8 = undefined;
+    const needle = util.lowerString(&buf, search_str);
+
+    for (matches) |*match| {
+        try match.updateScore(gpa, needle);
+    }
+
+    Match.sortMatches(matches, Match.orderByScore);
+
+    var len: usize = 0;
+    for (matches) |match| {
+        if (match.score <= 0) break;
+        len += 1;
+    }
+    return matches[0..len];
 }
 
 pub fn updateScore(self: *Match, gpa: Allocator, needle: []const u8) !void {

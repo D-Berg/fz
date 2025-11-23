@@ -10,6 +10,7 @@ pub fn build(b: *std.Build) void {
 
     const build_options = b.addOptions();
     build_options.addOption(@TypeOf(use_simd), "use_simd", use_simd);
+    build_options.addOption(usize, "MAX_SEARCH_LEN", 1024);
 
     const exe = b.addExecutable(.{
         .name = @tagName(manifest.name),
