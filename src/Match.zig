@@ -129,7 +129,7 @@ fn matchPositions(match: *Match, arena: Allocator, needle: []const u8) !void {
             } else {
                 d.getRow(i)[j] = score_min;
                 prev_score += gap_score;
-                m.getRow(i)[i] = prev_score;
+                m.getRow(i)[j] = prev_score;
             }
         }
     }
@@ -138,7 +138,7 @@ fn matchPositions(match: *Match, arena: Allocator, needle: []const u8) !void {
     var i = needle.len - 1;
     while (i > 0) : (i -= 1) {
         var j = match.lower_str.len - 1;
-        while (j >= 0) : (j -= 1) {
+        while (j > 0) : (j -= 1) {
             // There may be multiple paths which result in
             // the optimal weight.
             //
@@ -155,8 +155,8 @@ fn matchPositions(match: *Match, arena: Allocator, needle: []const u8) !void {
                 match_required = (i != 0) and (j != 0) and
                     m.getRow(i)[j] == d.getRow(i - 1)[j - 1] + SCORE_MATCH_CONSECUTIVE;
 
-                j -= 1;
                 match.positions[i] = j;
+                j -= 1;
 
                 break;
             }
@@ -214,6 +214,20 @@ fn Matrix(comptime T: type) type {
             return self.data[i * self.cols + j];
         }
     };
+}
+
+/// ascending based on idx
+pub fn orderByIdx(_: void, a: Match, b: Match) bool {
+    return a.idx < b.idx;
+}
+
+/// descending based on score
+pub fn orderByScore(_: void, a: Match, b: Match) bool {
+    return a.score > b.score;
+}
+
+pub fn sortMatches(matches: []Match, orderBy: fn (void, Match, Match) bool) void {
+    std.mem.sort(Match, matches, {}, orderBy);
 }
 
 test hasMatch {

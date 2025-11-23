@@ -73,8 +73,9 @@ pub fn run(app: *App, io: Io, gpa: Allocator, result: *?[]const u8) !void {
                 // backspace
                 if (app.search_str.len > 0) {
                     app.search_str.len -= 1;
-                    try app.updateMatches(gpa);
                 }
+
+                try app.updateMatches(gpa);
             },
 
             '\r', '\n' => {
@@ -164,13 +165,7 @@ pub fn draw(app: *App) !void {
 pub fn updateMatches(app: *App, gpa: Allocator) !void {
     if (app.search_str.len == 0) {
         // restore to original
-        std.mem.sort(Match, app.matches, {}, struct {
-            fn lessThanFn(_: void, a: Match, b: Match) bool {
-                // ascending based on idx
-                return a.idx < b.idx;
-            }
-        }.lessThanFn);
-
+        Match.sortMatches(app.matches, Match.orderByIdx);
         return;
     }
 
@@ -183,10 +178,5 @@ pub fn updateMatches(app: *App, gpa: Allocator) !void {
 
     // TODO: create a window of matches with score > 0
 
-    std.mem.sort(Match, app.matches, {}, struct {
-        fn lessThanFn(_: void, a: Match, b: Match) bool {
-            // descending based on score
-            return a.score > b.score;
-        }
-    }.lessThanFn);
+    Match.sortMatches(app.matches, Match.orderByScore);
 }

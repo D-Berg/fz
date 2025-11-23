@@ -5,6 +5,7 @@ const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const Tty = @import("Tty.zig");
 const App = @import("App.zig");
+const cli = @import("cli.zig");
 
 var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
 
@@ -27,6 +28,14 @@ pub fn main() !void {
 
     const io = threaded.io();
 
+    var arena_impl: std.heap.ArenaAllocator = .init(gpa);
+    defer arena_impl.deinit();
+
+    const arena = arena_impl.allocator();
+
+    const args = try std.process.argsAlloc(arena);
+    const commands = try cli.parse(args, null);
+
     if (std.posix.isatty(std.posix.STDIN_FILENO)) {
         std.debug.print("you werent piped to\n", .{});
         // TODO: get data from default command
@@ -39,24 +48,23 @@ pub fn main() !void {
         var stdout_writer = std.fs.File.stdout().writer(&stdout_buf);
         const stdout = &stdout_writer.interface;
 
-        var arena_impl: std.heap.ArenaAllocator = .init(gpa);
-        defer arena_impl.deinit();
-
-        const arena = arena_impl.allocator();
-
         var lines: std.ArrayList([]const u8) = .empty;
-
         while (try stdin.takeDelimiter('\n')) |line| {
             try lines.ensureUnusedCapacity(arena, 1);
             lines.appendAssumeCapacity(try arena.dupe(u8, line));
         }
 
-        const args = try std.process.argsAlloc(gpa);
-        defer std.process.argsFree(gpa, args);
-
-        if (try findStr(io, gpa, lines.items)) |result| {
-            try stdout.print("{s}\n", .{result});
-            try stdout.flush();
+        switch (commands) {
+            .run => {
+                if (try findStr(io, gpa, lines.items)) |result| {
+                    try stdout.print("{s}\n", .{result});
+                    try stdout.flush();
+                }
+            },
+            .filter => |search_str| {
+                std.debug.print("search str = {s}\n", .{search_str});
+                @panic("TODO");
+            },
         }
     }
 }
