@@ -29,15 +29,7 @@ pub fn init(gpa: Allocator, tty: *Tty, choices: []const []const u8) !App {
     var app: App = undefined;
     const matches = try arena.alloc(Match, choices.len);
     for (choices, 0..) |choice, i| {
-        const pattern = try arena.alloc(bool, choice.len);
-        @memset(pattern, false);
-        matches[i] = Match{
-            .lower_str = try util.lowerStringAlloc(arena, choice),
-            .original_str = choice,
-            .pattern = pattern,
-            .score = Match.score_min,
-            .idx = i,
-        };
+        matches[i] = try Match.init(arena, choice, i);
     }
     app.tty = tty;
     app.selected = 0;
@@ -66,6 +58,8 @@ pub fn run(app: *App, io: Io, gpa: Allocator, result: *?[]const u8) !void {
     while (true) {
         const n_read = try tty.in.interface.readSliceShort(&buf);
         const maybe_c = if (n_read == 1) buf[0] else null;
+
+        // TODO: vim mode
         if (maybe_c) |c| switch (c) {
             util.ctrl('c') => return,
             util.ctrl('p') => {
@@ -132,10 +126,10 @@ pub fn draw(app: *App) !void {
 
         const match = app.matches[i];
 
-        const str = app.matches[i].original_str;
+        const str = match.original_str;
         const max_len = @min(tty.max_width - 10, str.len);
 
-        if (app.search_str.len == 0 or match.score > 0) {
+        if (app.search_str.len == 0 or match.score > Match.score_min) {
             if (app.selected == i) {
                 try tty.print("\x1b[38;2;197;41;96m", .{}); // red
                 try tty.print("\x1b[48;2;100;100;100m", .{});
@@ -163,8 +157,8 @@ pub fn draw(app: *App) !void {
     try tty.flush();
 }
 
+// TODO: update concurrently
 pub fn updateMatches(app: *App, gpa: Allocator) !void {
-    _ = gpa;
     if (app.search_str.len == 0) {
         // restore to original
         std.mem.sort(Match, app.matches, {}, struct {
@@ -181,8 +175,10 @@ pub fn updateMatches(app: *App, gpa: Allocator) !void {
     const needle = util.lowerString(&buf, app.search_str);
 
     for (app.matches) |*match| {
-        match.updateScore(needle);
+        try match.updateScore(gpa, needle);
     }
+
+    // TODO: create a window of matches with score > 0
 
     std.mem.sort(Match, app.matches, {}, struct {
         fn lessThanFn(_: void, a: Match, b: Match) bool {
