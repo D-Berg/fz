@@ -72,6 +72,7 @@ fn calculateBonus(bonus: []f64, haystack: []const u8) void {
 
 // TODO: update concurrently
 /// Returns a slice into matches and update each match score
+/// window is not allocated
 pub fn updateMatches(gpa: Allocator, search_str: []const u8, matches: []Match) ![]const Match {
     if (search_str.len == 0) {
         // restore to original

@@ -5,6 +5,7 @@ const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const Tty = @import("Tty.zig");
 const App = @import("App.zig");
+const Match = @import("Match.zig");
 const cli = @import("cli.zig");
 
 var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
@@ -56,20 +57,30 @@ pub fn main() !void {
 
         switch (commands) {
             .run => {
-                if (try findStr(io, gpa, lines.items)) |result| {
+                if (try run(io, gpa, lines.items)) |result| {
                     try stdout.print("{s}\n", .{result});
                     try stdout.flush();
                 }
             },
             .filter => |search_str| {
-                std.debug.print("search str = {s}\n", .{search_str});
-                @panic("TODO");
+                const choices = lines.items;
+
+                const matches = try arena.alloc(Match, choices.len);
+                for (choices, 0..) |choice, i| {
+                    matches[i] = try Match.init(arena, choice, i);
+                }
+
+                const window = try Match.updateMatches(gpa, search_str, matches);
+                for (window) |match| {
+                    try stdout.print("{s}\n", .{match.original_str});
+                    try stdout.flush();
+                }
             },
         }
     }
 }
 
-pub fn findStr(io: Io, gpa: Allocator, lines: []const []const u8) !?[]const u8 {
+pub fn run(io: Io, gpa: Allocator, lines: []const []const u8) !?[]const u8 {
     var write_buf: [1024]u8 = undefined;
 
     var tty: Tty = try .init(io, "/dev/tty", &.{}, &write_buf);
