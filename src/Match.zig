@@ -134,82 +134,36 @@ fn matchPositions(match: *Match, arena: Allocator, needle: []const u8) !void {
         }
     }
 
-    // var match_required: bool = false;
-    // var i = needle.len - 1;
-    // while (i >= 0) : (i -= 1) {
-    //     var j = match.lower_str.len - 1;
-    //     while (j >= 0) : (j -= 0) {
-    //         // There may be multiple paths which result in
-    //         // the optimal weight.
-    //         //
-    //         // For simplicity, we will pick the first one
-    //         // we encounter, the latest in the candidate
-    //         // string.
-    //
-    //         if ((d.getRow(i)[j] != score_min) and
-    //             (match_required or d.getRow(i)[j] == m.getRow(i)[j]))
-    //         {
-    //             //If this score was determined using
-    //             //SCORE_MATCH_CONSECUTIVE, the
-    //             //previous character MUST be a match
-    //             //
-    //
-    //             match_required = (i != 0) and (j != 0) and
-    //                 m.getRow(i)[j] == d.getRow(i - 1)[j - 1] + SCORE_MATCH_CONSECUTIVE;
-    //
-    //             j -= 1;
-    //             match.positions[i] = j;
-    //
-    //             break;
-    //         }
-    //     }
-    // }
+    var match_required: bool = false;
+    var i = needle.len - 1;
+    while (i > 0) : (i -= 1) {
+        var j = match.lower_str.len - 1;
+        while (j >= 0) : (j -= 1) {
+            // There may be multiple paths which result in
+            // the optimal weight.
+            //
+            // For simplicity, we will pick the first one
+            // we encounter, the latest in the candidate
+            // string.
 
-    match.score = m.getVal(needle.len - 1, match.lower_str.len - 1);
-}
+            if ((d.getRow(i)[j] != score_min) and
+                (match_required or d.getRow(i)[j] == m.getRow(i)[j]))
+            {
+                // If this score was determined using
+                // SCORE_MATCH_CONSECUTIVE, the
+                // previous character MUST be a match
+                match_required = (i != 0) and (j != 0) and
+                    m.getRow(i)[j] == d.getRow(i - 1)[j - 1] + SCORE_MATCH_CONSECUTIVE;
 
-fn row(
-    match: *Match,
-    i: usize,
-    needle: []const u8,
-    curr_d: []f64,
-    curr_m: []f64,
-    last_d: []f64,
-    last_m: []f64,
-) void {
-    var prev_score = score_min;
-    var prev_d = score_min;
-    var prev_m = score_min;
+                j -= 1;
+                match.positions[i] = j;
 
-    const gap_score: f64 = if (i == needle.len - 1)
-        SCORE_GAP_TRAILING
-    else
-        SCORE_GAP_INNER;
-
-    for (0..match.lower_str.len) |j| {
-        if (needle[i] == match.lower_str[j]) {
-            var score: f64 = score_min;
-            if (i == 0) {
-                score = (@as(f64, @floatFromInt(j)) * SCORE_GAP_LEADING) + match.bonus[j];
-            } else if (j > 0) {
-                score = @max(
-                    prev_m + match.bonus[j],
-                    prev_d + SCORE_MATCH_CONSECUTIVE,
-                );
+                break;
             }
-
-            prev_d = last_d[j];
-            prev_m = last_m[j];
-            curr_d[j] = score;
-            curr_m[j] = prev_score + @max(score, prev_score + gap_score);
-        } else {
-            prev_d = last_d[j];
-            prev_m = last_m[j];
-            curr_d[j] = score_min;
-            prev_score = prev_score + gap_score;
-            curr_m[j] = prev_score;
         }
     }
+
+    match.score = m.getVal(needle.len - 1, match.lower_str.len - 1);
 }
 
 fn hasMatch(haystack: []const u8, needle: []const u8) bool {
