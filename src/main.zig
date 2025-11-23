@@ -45,6 +45,7 @@ pub fn main() !void {
         var stdin_reader = std.Io.File.stdin().reader(io, &stdin_buf);
         const stdin = &stdin_reader.interface;
 
+        // TODO: change to std.Io.File when writing works
         var stdout_buf: [1024]u8 = undefined;
         var stdout_writer = std.fs.File.stdout().writer(&stdout_buf);
         const stdout = &stdout_writer.interface;
