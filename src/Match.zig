@@ -204,7 +204,6 @@ fn hasMatch(haystack: []const u8, needle: []const u8) bool {
         search[0] = c;
         search[1] = std.ascii.toUpper(c);
 
-        // TODO: simd
         if (std.mem.findAny(u8, h, search[0..])) |idx| {
             h = haystack[idx + 1 ..];
             continue;
@@ -214,6 +213,35 @@ fn hasMatch(haystack: []const u8, needle: []const u8) bool {
     }
 
     return true;
+}
+
+fn findAny(slice: []const u8, values: []const u8) ?usize {
+    if (slice.len == 0) return null;
+
+    var remaining = slice[0..];
+    var i: usize = 0;
+    if (build_options.use_simd) if (std.simd.suggestVectorLength(u8)) |vec_len| {
+        while (remaining.len >= vec_len) {
+            const chunk_slice: @Vector(vec_len, u8) = remaining[0..vec_len].*;
+            for (values) |value| {
+                const vector_value: @Vector(vec_len, u8) = @splat(value);
+                const matches = chunk_slice == vector_value;
+                const maybe_idx = std.simd.firstTrue(matches);
+                if (maybe_idx) |idx| return i + idx;
+            }
+            i += vec_len;
+            remaining = remaining[vec_len..];
+        }
+    };
+
+    // std.mem.findAny
+    for (remaining) |c| {
+        for (values) |value| {
+            if (c == value) return i;
+        }
+        i += 1;
+    }
+    return null;
 }
 
 fn Matrix(comptime T: type) type {
