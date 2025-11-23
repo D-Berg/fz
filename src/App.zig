@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
@@ -138,10 +139,12 @@ pub fn draw(app: *App) !void {
 
                 try tty.print("\x1b[48;2;100;100;100m", .{});
 
+                if (builtin.mode == .Debug) try tty.print("({d:2})", .{match.score});
                 try tty.print("  {s}", .{str[0..max_len]});
                 try tty.print("\x1b[m", .{});
             } else {
                 try tty.print("\x1b[38;2;100;100;100m▌\x1b[m", .{});
+                if (builtin.mode == .Debug) try tty.print("({d:2})", .{match.score});
                 try tty.print("  {s}", .{str[0..max_len]});
             }
         }
