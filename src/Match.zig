@@ -194,8 +194,6 @@ pub fn updateScore(self: *Match, needle: []const u8, d: *Matrix(Score), m: *Matr
     // reset score
     self.score = score_min;
 
-    @memset(self.positions, 0);
-
     if (hasMatch(self.original_str, needle)) {
         d.resize(needle.len, self.lower_str.len);
         m.resize(needle.len, self.lower_str.len);
@@ -327,7 +325,7 @@ fn hasMatch(haystack: []const u8, needle: []const u8) bool {
         search[1] = std.ascii.toUpper(c);
 
         if (findAny(h, search[0..])) |idx| {
-            h = haystack[idx + 1 ..];
+            h = h[idx + 1 ..];
             continue;
         }
 
