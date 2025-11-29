@@ -158,17 +158,6 @@ fn sendWork(
     }
 }
 
-// fn waitForWorkToFinnish(io: Io, tasks: usize, sema: *Semaphore) !void {
-//     const tr = tracy.trace(@src());
-//     defer tr.end();
-//
-//     var t: usize = tasks;
-//     while (t > 0) {
-//         try sema.wait(io);
-//         t -= 1;
-//     }
-// }
-
 pub fn worker(io: Io, gpa: Allocator, worker_queue: *Io.Queue(Work)) void {
     const tr = tracy.trace(@src());
     defer tr.end();
