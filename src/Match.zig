@@ -9,8 +9,11 @@ const Semaphore = @import("Semaphore.zig");
 const WaitGroup = @import("WaitGroup.zig");
 const tracy = @import("tracy.zig");
 
-pub const score_min = -std.math.inf(f64);
-pub const score_max = std.math.inf(f64);
+/// Float
+const Score = f16;
+
+pub const score_min = -std.math.inf(Score);
+pub const score_max = std.math.inf(Score);
 
 const MAX_SEARCH_LEN = build_options.MAX_SEARCH_LEN;
 
@@ -28,11 +31,11 @@ const Match = @This();
 /// Not owned by this
 original_str: []const u8,
 idx: usize,
-score: f64 = score_min,
+score: Score = score_min,
 /// memory owned by match
 lower_str: []const u8,
 positions: []usize,
-bonus: []f64,
+bonus: []Score,
 
 pub fn init(gpa: Allocator, original_str: []const u8, idx: usize) !Match {
     const lower_str = try util.lowerStringAlloc(gpa, original_str);
@@ -42,7 +45,7 @@ pub fn init(gpa: Allocator, original_str: []const u8, idx: usize) !Match {
     errdefer gpa.free(positions);
     @memset(positions, 0);
 
-    const bonus = try gpa.alloc(f64, original_str.len);
+    const bonus = try gpa.alloc(Score, original_str.len);
     calculateBonus(bonus, original_str);
 
     return .{
@@ -54,7 +57,7 @@ pub fn init(gpa: Allocator, original_str: []const u8, idx: usize) !Match {
     };
 }
 
-fn calculateBonus(bonus: []f64, haystack: []const u8) void {
+fn calculateBonus(bonus: []Score, haystack: []const u8) void {
     const tr = tracy.trace(@src());
     defer tr.end();
 
@@ -220,12 +223,12 @@ fn matchPositions(match: *Match, arena: Allocator, needle: []const u8) !void {
         match.score = score_max;
         return;
     }
-    var d = try Matrix(f64).init(arena, needle.len, match.lower_str.len);
-    var m = try Matrix(f64).init(arena, needle.len, match.lower_str.len);
+    var d = try Matrix(Score).init(arena, needle.len, match.lower_str.len);
+    var m = try Matrix(Score).init(arena, needle.len, match.lower_str.len);
 
     for (needle, 0..) |n, i| {
         var prev_score = score_min;
-        const gap_score: f64 = if (i == needle.len - 1)
+        const gap_score: Score = if (i == needle.len - 1)
             SCORE_GAP_TRAILING
         else
             SCORE_GAP_INNER;
@@ -235,7 +238,7 @@ fn matchPositions(match: *Match, arena: Allocator, needle: []const u8) !void {
                 var score = score_min;
 
                 if (i == 0) {
-                    score = (@as(f64, @floatFromInt(j)) * SCORE_GAP_LEADING) + match.bonus[j];
+                    score = (@as(Score, @floatFromInt(j)) * SCORE_GAP_LEADING) + match.bonus[j];
                 } else if (j > 0) {
                     score = @max(
                         m.row(i - 1)[j - 1] + match.bonus[j],
@@ -253,6 +256,16 @@ fn matchPositions(match: *Match, arena: Allocator, needle: []const u8) !void {
             }
         }
     }
+
+    match.updatePositions(needle, &d, &m);
+
+    match.score = m.row(needle.len - 1)[match.lower_str.len - 1];
+}
+
+/// Update Match.positions
+fn updatePositions(match: *Match, needle: []const u8, d: *Matrix(Score), m: *Matrix(Score)) void {
+    const tr = tracy.trace(@src());
+    defer tr.end();
 
     var match_required: bool = false;
     var i = needle.len - 1;
@@ -282,8 +295,6 @@ fn matchPositions(match: *Match, arena: Allocator, needle: []const u8) !void {
             }
         }
     }
-
-    match.score = m.row(needle.len - 1)[match.lower_str.len - 1];
 }
 
 fn hasMatch(haystack: []const u8, needle: []const u8) bool {
