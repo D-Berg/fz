@@ -132,9 +132,9 @@ fn run(io: Io, gpa: Allocator, lines: []const []const u8, opts: cli.RunOptions) 
     const tr = tracy.trace(@src());
     defer tr.end();
 
-    var write_buf: [1024]u8 = undefined;
+    var tty_buf: [8192]u8 = undefined;
 
-    var tty: Tty = try .init(io, "/dev/tty", &.{}, &write_buf);
+    var tty: Tty = try .init(io, "/dev/tty", &.{}, &tty_buf);
     defer tty.deinit();
 
     var app: App = try .init(gpa, &tty, lines, opts);
