@@ -79,7 +79,7 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
                     matches[i] = try Match.init(arena, choice, i);
                 }
 
-                const work_size = 8;
+                const work_size = 8; // TODO: dont hardcode it
                 const work_queue_buf = try gpa.alloc(Match.Work, 1024);
                 defer gpa.free(work_queue_buf);
 
