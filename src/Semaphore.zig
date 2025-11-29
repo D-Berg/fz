@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const Io = std.Io;
 const testing = std.testing;
+const tracy = @import("tracy.zig");
 
 const Semaphore = @This();
 
@@ -11,6 +12,9 @@ cond: Io.Condition = .{},
 permits: usize = 0,
 
 pub fn wait(sem: *Semaphore, io: Io) error{Canceled}!void {
+    const tr = tracy.trace(@src());
+    defer tr.end();
+
     try sem.mutex.lock(io);
     defer sem.mutex.unlock(io);
 
@@ -23,6 +27,9 @@ pub fn wait(sem: *Semaphore, io: Io) error{Canceled}!void {
 }
 
 pub fn post(sem: *Semaphore, io: Io) error{Canceled}!void {
+    const tr = tracy.trace(@src());
+    defer tr.end();
+
     try sem.mutex.lock(io);
     defer sem.mutex.unlock(io);
 

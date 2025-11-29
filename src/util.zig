@@ -5,6 +5,9 @@ const assert = std.debug.assert;
 const tracy = @import("tracy.zig");
 
 pub fn lowerStringAlloc(gpa: Allocator, ascii_str: []const u8) ![]const u8 {
+    const tr = tracy.trace(@src());
+    defer tr.end();
+
     const out = try gpa.alloc(u8, ascii_str.len);
     return lowerString(out, ascii_str);
 }

@@ -6,6 +6,7 @@ const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
 const Semaphore = @import("Semaphore.zig");
+const WaitGroup = @import("WaitGroup.zig");
 const tracy = @import("tracy.zig");
 
 pub const score_min = -std.math.inf(f64);
@@ -54,6 +55,9 @@ pub fn init(gpa: Allocator, original_str: []const u8, idx: usize) !Match {
 }
 
 fn calculateBonus(bonus: []f64, haystack: []const u8) void {
+    const tr = tracy.trace(@src());
+    defer tr.end();
+
     assert(bonus.len == haystack.len);
 
     var last_char: u8 = '/';
@@ -76,10 +80,10 @@ fn calculateBonus(bonus: []f64, haystack: []const u8) void {
 pub const Work = struct {
     matches: []Match,
     needle: []const u8,
-    sema: *Semaphore,
+    wg: *WaitGroup,
 
     pub fn finnish(self: *const Work, io: Io) !void {
-        try self.sema.post(io);
+        try self.wg.done(io);
     }
 };
 
@@ -105,28 +109,11 @@ pub fn updateMatches(
     var buf: [MAX_SEARCH_LEN]u8 = undefined;
     const needle = util.lowerString(&buf, search_str);
 
-    var tasks: usize = 0;
-    var sema: Semaphore = .{ .permits = 0 };
-    const max_chunk_size = 1024;
-    var remaining = matches[0..];
-    while (remaining.len > 0) {
-        const chunk_size = if (remaining.len > max_chunk_size)
-            max_chunk_size
-        else
-            remaining.len;
-
-        const chunk = remaining[0..chunk_size];
-        try work_queue.putOne(io, .{
-            .matches = chunk[0..],
-            .needle = needle,
-            .sema = &sema,
-        });
-        remaining = remaining[chunk_size..];
-
-        tasks += 1;
-    }
-
-    try waitForWorkToFinnish(io, tasks, &sema);
+    // var sema: Semaphore = .{ .permits = 0 };
+    var wg: WaitGroup = .init;
+    try sendWork(io, &wg, needle, matches, work_queue);
+    // try waitForWorkToFinnish(io, tasks, &wg);
+    try wg.wait(io);
 
     Match.sortMatches(matches, Match.orderByScore);
 
@@ -138,25 +125,62 @@ pub fn updateMatches(
     return matches[0..len];
 }
 
-fn waitForWorkToFinnish(io: Io, tasks: usize, sema: *Semaphore) !void {
+fn sendWork(
+    io: Io,
+    wg: *WaitGroup,
+    needle: []const u8,
+    matches: []Match,
+    work_queue: *Io.Queue(Work),
+) !void {
     const tr = tracy.trace(@src());
     defer tr.end();
 
-    var t: usize = tasks;
-    while (t > 0) {
-        try sema.wait(io);
-        t -= 1;
+    const max_chunk_size: usize = matches.len / work_queue.capacity();
+    var remaining = matches[0..];
+    while (remaining.len > 0) {
+        const chunk_size = if (remaining.len > max_chunk_size)
+            max_chunk_size
+        else
+            remaining.len;
+
+        const chunk = remaining[0..chunk_size];
+        try work_queue.putOne(io, .{
+            .matches = chunk[0..],
+            .needle = needle,
+            .wg = wg,
+        });
+        remaining = remaining[chunk_size..];
+
+        try wg.add(io, 1);
     }
 }
 
-pub fn worker(io: Io, gpa: Allocator, worker_queue: *Io.Queue(Work)) void {
-    while (worker_queue.getOne(io)) |work| {
-        for (work.matches) |*match| {
-            match.updateScore(gpa, work.needle) catch return;
-        }
+// fn waitForWorkToFinnish(io: Io, tasks: usize, sema: *Semaphore) !void {
+//     const tr = tracy.trace(@src());
+//     defer tr.end();
+//
+//     var t: usize = tasks;
+//     while (t > 0) {
+//         try sema.wait(io);
+//         t -= 1;
+//     }
+// }
 
-        work.sema.post(io) catch return;
-    } else |_| return;
+pub fn worker(io: Io, gpa: Allocator, worker_queue: *Io.Queue(Work)) void {
+    const tr = tracy.trace(@src());
+    defer tr.end();
+
+    while (worker_queue.getOne(io)) |work| {
+        defer work.finnish(io) catch {};
+        std.debug.print("worker got work of size: {}\n", .{work.matches.len});
+        for (work.matches) |*match| {
+            match.updateScore(gpa, work.needle) catch {
+                return;
+            };
+        }
+    } else |_| {
+        tracy.message("worker got canceled");
+    }
 }
 
 pub fn updateScore(self: *Match, gpa: Allocator, needle: []const u8) !void {

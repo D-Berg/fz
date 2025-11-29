@@ -83,7 +83,7 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
                 }
 
                 const work_size = 8; // TODO: dont hardcode it
-                const work_queue_buf = try gpa.alloc(Match.Work, 1024);
+                const work_queue_buf = try gpa.alloc(Match.Work, work_size);
                 defer gpa.free(work_queue_buf);
 
                 var work_queue: Io.Queue(Match.Work) = .init(work_queue_buf);
