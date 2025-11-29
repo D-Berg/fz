@@ -326,7 +326,7 @@ fn hasMatch(haystack: []const u8, needle: []const u8) bool {
         search[0] = c;
         search[1] = std.ascii.toUpper(c);
 
-        if (std.mem.findAny(u8, h, search[0..])) |idx| {
+        if (findAny(h, search[0..])) |idx| {
             h = haystack[idx + 1 ..];
             continue;
         }
