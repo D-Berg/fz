@@ -2,13 +2,21 @@ const std = @import("std");
 const build_options = @import("build_options");
 const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
+const tracy = @import("tracy.zig");
 
 pub fn lowerStringAlloc(gpa: Allocator, ascii_str: []const u8) ![]const u8 {
+    const tr = tracy.trace(@src());
+    defer tr.end();
+
     const out = try gpa.alloc(u8, ascii_str.len);
     return lowerString(out, ascii_str);
 }
 
+/// SIMD lower ascii string
 pub fn lowerString(output: []u8, ascii_str: []const u8) []u8 {
+    const tr = tracy.trace(@src());
+    defer tr.end();
+
     assert(output.len >= ascii_str.len);
 
     var remaining_str = ascii_str[0..];

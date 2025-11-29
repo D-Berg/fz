@@ -8,6 +8,8 @@ const assert = std.debug.assert;
 const Tty = @import("Tty.zig");
 const Match = @import("Match.zig");
 const util = @import("util.zig");
+const tracy = @import("tracy.zig");
+const cli = @import("cli.zig");
 
 const updateMatches = Match.updateMatches;
 
@@ -22,8 +24,10 @@ window: []const Match,
 selected: usize = 0,
 search_str: []u8,
 search_buf: [MAX_SEARCH_LEN]u8,
+opts: cli.RunOptions,
+max_input_len: usize,
 
-pub fn init(gpa: Allocator, tty: *Tty, choices: []const []const u8) !App {
+pub fn init(gpa: Allocator, tty: *Tty, choices: []const []const u8, opts: cli.RunOptions) !App {
     assert(choices.len > 0);
 
     var arena_impl: std.heap.ArenaAllocator = .init(gpa);
@@ -32,8 +36,10 @@ pub fn init(gpa: Allocator, tty: *Tty, choices: []const []const u8) !App {
     const arena = arena_impl.allocator();
 
     var app: App = undefined;
+    var max_input_len: usize = 0;
     const matches = try arena.alloc(Match, choices.len);
     for (choices, 0..) |choice, i| {
+        if (choice.len > max_input_len) max_input_len = choice.len;
         matches[i] = try Match.init(arena, choice, i);
     }
     app.tty = tty;
@@ -42,7 +48,8 @@ pub fn init(gpa: Allocator, tty: *Tty, choices: []const []const u8) !App {
     app.search_buf = undefined;
     app.arena_state = arena_impl.state;
     app.window = matches[0..];
-
+    app.opts = opts;
+    app.max_input_len = max_input_len;
     return app;
 }
 
@@ -52,17 +59,30 @@ pub fn deinit(app: *App, gpa: Allocator) void {
 }
 
 pub fn run(app: *App, io: Io, gpa: Allocator, result: *?[]const u8) !void {
+    const tr = tracy.trace(@src());
+    defer tr.end();
+
     const tty = app.tty;
     app.search_str = app.search_buf[0..0];
 
-    _ = io;
-
     try app.draw();
 
-    app.window = try updateMatches(gpa, app.search_str, app.matches);
+    const work_size = 8;
+    const work_queue_buf = try gpa.alloc(Match.Work, work_size);
+    defer gpa.free(work_queue_buf);
+
+    var work_queue: Io.Queue(Match.Work) = .init(work_queue_buf);
+
+    var group: Io.Group = .init;
+    defer group.cancel(io);
+
+    for (0..work_size) |_| {
+        try group.concurrent(io, Match.worker, .{ io, gpa, &work_queue, app.max_input_len });
+    }
 
     var buf: [1]u8 = undefined;
     while (true) {
+        tracy.frameMark();
         const n_read = try tty.in.interface.readSliceShort(&buf);
         const maybe_c = if (n_read == 1) buf[0] else null;
 
@@ -92,7 +112,7 @@ pub fn run(app: *App, io: Io, gpa: Allocator, result: *?[]const u8) !void {
                     app.search_str.len -= 1;
                 }
 
-                app.window = try updateMatches(gpa, app.search_str, app.matches);
+                app.window = try updateMatches(io, app.search_str, app.matches, &work_queue);
             },
 
             '\r', '\n' => {
@@ -107,7 +127,7 @@ pub fn run(app: *App, io: Io, gpa: Allocator, result: *?[]const u8) !void {
                     app.search_str.len += 1;
                     app.search_str[at] = c;
 
-                    app.window = try updateMatches(gpa, app.search_str, app.matches);
+                    app.window = try updateMatches(io, app.search_str, app.matches, &work_queue);
                 }
             },
         };
@@ -118,6 +138,11 @@ pub fn run(app: *App, io: Io, gpa: Allocator, result: *?[]const u8) !void {
 
 const prompt = "> ";
 pub fn draw(app: *App) !void {
+    const tr = tracy.trace(@src());
+    defer tr.end();
+
+    const show_scores = app.opts.show_scores;
+
     const tty = app.tty;
     tty.getWinSize();
 
@@ -160,13 +185,13 @@ pub fn draw(app: *App) !void {
 
             try tty.print("\x1b[48;2;100;100;100m", .{});
 
-            if (builtin.mode == .Debug) try tty.print("({d:.2})", .{match.score});
+            if (builtin.mode == .Debug or show_scores) try tty.print("({d:.2})", .{match.score});
 
             try tty.print("  {s}", .{str[0..max_width]});
             try tty.print("\x1b[m", .{});
         } else {
             try tty.print("\x1b[38;2;100;100;100m▌\x1b[m", .{});
-            if (builtin.mode == .Debug) try tty.print("({d:.2})", .{match.score});
+            if (builtin.mode == .Debug or show_scores) try tty.print("({d:.2})", .{match.score});
             try tty.print("  {s}", .{str[0..max_width]});
         }
 

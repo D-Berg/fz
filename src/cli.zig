@@ -2,8 +2,17 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 pub const Command = union(enum) {
-    filter: []const u8,
-    run: void,
+    filter: FilterOptions,
+    run: RunOptions,
+};
+
+pub const RunOptions = struct {
+    show_scores: bool = false,
+};
+
+const FilterOptions = struct {
+    search_str: []const u8 = &.{},
+    show_scores: bool = false,
 };
 
 const ArgIterator = struct {
@@ -38,15 +47,26 @@ pub fn parse(args: []const []const u8, diag: ?*Diagnostic) !Command {
     var it: ArgIterator = .init(args);
     assert(it.skip());
 
+    var filter: bool = false;
+    var show_scores: bool = false;
+    var search_str: []const u8 = undefined;
+
     while (it.next()) |arg| {
         if (std.mem.eql(u8, "--filter", arg) or std.mem.eql(u8, "-f", arg)) {
-            const search_str = it.next() orelse {
+            filter = true;
+            search_str = it.next() orelse {
                 if (diag) |d| _ = d; // TODO:
                 return error.MissingArg;
             };
-            return .{ .filter = search_str };
+        } else if (std.mem.eql(u8, "--show-scores", arg) or std.mem.eql(u8, "-s", arg)) {
+            show_scores = true;
         }
     }
 
-    return .run;
+    if (filter) return .{ .filter = .{
+        .search_str = search_str,
+        .show_scores = show_scores,
+    } };
+
+    return .{ .run = .{ .show_scores = show_scores } };
 }

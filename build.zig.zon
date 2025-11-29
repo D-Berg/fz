@@ -4,4 +4,11 @@
     .minimum_zig_version = "0.16.0-dev.1364+f0a3df98d",
     .paths = .{""},
     .fingerprint = 0xc2ae46fc37ceb956,
+    .dependencies = .{
+        .tracy = .{
+            .url = "https://github.com/wolfpld/tracy/archive/refs/tags/v0.12.2.tar.gz",
+            .hash = "N-V-__8AANptPwE8EYOS5w6KRzVyfllpOBthYRcuuQvYhhxb",
+            // .lazy = true,
+        },
+    },
 }
