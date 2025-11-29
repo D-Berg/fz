@@ -8,6 +8,7 @@ pub fn lowerStringAlloc(gpa: Allocator, ascii_str: []const u8) ![]const u8 {
     return lowerString(out, ascii_str);
 }
 
+/// SIMD lower ascii string
 pub fn lowerString(output: []u8, ascii_str: []const u8) []u8 {
     assert(output.len >= ascii_str.len);
 

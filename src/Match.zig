@@ -2,8 +2,10 @@ const std = @import("std");
 const build_options = @import("build_options");
 const util = @import("util.zig");
 
+const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
+const Semaphore = @import("Semaphore.zig");
 
 pub const score_min = -std.math.inf(f64);
 pub const score_max = std.math.inf(f64);
@@ -70,10 +72,21 @@ fn calculateBonus(bonus: []f64, haystack: []const u8) void {
     }
 }
 
+pub const Work = struct {
+    matches: []Match,
+    needle: []const u8,
+    sema: *Semaphore,
+};
+
 // TODO: update concurrently
 /// Returns a slice into matches and update each match score
 /// window is not allocated
-pub fn updateMatches(gpa: Allocator, search_str: []const u8, matches: []Match) ![]const Match {
+pub fn updateMatches(
+    io: Io,
+    search_str: []const u8,
+    matches: []Match,
+    work_queue: *Io.Queue(Work),
+) ![]const Match {
     if (search_str.len == 0) {
         // restore to original
         Match.sortMatches(matches, Match.orderByIdx);
@@ -84,8 +97,30 @@ pub fn updateMatches(gpa: Allocator, search_str: []const u8, matches: []Match) !
     var buf: [MAX_SEARCH_LEN]u8 = undefined;
     const needle = util.lowerString(&buf, search_str);
 
-    for (matches) |*match| {
-        try match.updateScore(gpa, needle);
+    var tasks: usize = 0;
+    var sema: Semaphore = .{ .permits = 0 };
+    const max_chunk_size = 1024;
+    var remaining = matches[0..];
+    while (remaining.len > 0) {
+        const chunk_size = if (remaining.len > max_chunk_size)
+            max_chunk_size
+        else
+            remaining.len;
+
+        const chunk = remaining[0..chunk_size];
+        try work_queue.putOne(io, .{
+            .matches = chunk[0..],
+            .needle = needle,
+            .sema = &sema,
+        });
+        remaining = remaining[chunk_size..];
+
+        tasks += 1;
+    }
+
+    while (tasks > 0) {
+        try sema.wait(io);
+        tasks -= 1;
     }
 
     Match.sortMatches(matches, Match.orderByScore);
@@ -96,6 +131,16 @@ pub fn updateMatches(gpa: Allocator, search_str: []const u8, matches: []Match) !
         len += 1;
     }
     return matches[0..len];
+}
+
+pub fn worker(io: Io, gpa: Allocator, worker_queue: *Io.Queue(Work)) void {
+    while (worker_queue.getOne(io)) |work| {
+        for (work.matches) |*match| {
+            match.updateScore(gpa, work.needle) catch return;
+        }
+
+        work.sema.post(io) catch return;
+    } else |_| return;
 }
 
 pub fn updateScore(self: *Match, gpa: Allocator, needle: []const u8) !void {

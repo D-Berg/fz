@@ -55,11 +55,20 @@ pub fn run(app: *App, io: Io, gpa: Allocator, result: *?[]const u8) !void {
     const tty = app.tty;
     app.search_str = app.search_buf[0..0];
 
-    _ = io;
-
     try app.draw();
 
-    app.window = try updateMatches(gpa, app.search_str, app.matches);
+    const work_size = 8;
+    const work_queue_buf = try gpa.alloc(Match.Work, work_size);
+    defer gpa.free(work_queue_buf);
+
+    var work_queue: Io.Queue(Match.Work) = .init(work_queue_buf);
+
+    var group: Io.Group = .init;
+    defer group.cancel(io);
+
+    for (0..work_size) |_| {
+        try group.concurrent(io, Match.worker, .{ io, gpa, &work_queue });
+    }
 
     var buf: [1]u8 = undefined;
     while (true) {
@@ -92,7 +101,7 @@ pub fn run(app: *App, io: Io, gpa: Allocator, result: *?[]const u8) !void {
                     app.search_str.len -= 1;
                 }
 
-                app.window = try updateMatches(gpa, app.search_str, app.matches);
+                app.window = try updateMatches(io, app.search_str, app.matches, &work_queue);
             },
 
             '\r', '\n' => {
@@ -107,7 +116,7 @@ pub fn run(app: *App, io: Io, gpa: Allocator, result: *?[]const u8) !void {
                     app.search_str.len += 1;
                     app.search_str[at] = c;
 
-                    app.window = try updateMatches(gpa, app.search_str, app.matches);
+                    app.window = try updateMatches(io, app.search_str, app.matches, &work_queue);
                 }
             },
         };

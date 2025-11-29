@@ -71,7 +71,20 @@ pub fn main() !void {
                     matches[i] = try Match.init(arena, choice, i);
                 }
 
-                const window = try Match.updateMatches(gpa, search_str, matches);
+                const work_size = 8;
+                const work_queue_buf = try gpa.alloc(Match.Work, work_size);
+                defer gpa.free(work_queue_buf);
+
+                var work_queue: Io.Queue(Match.Work) = .init(work_queue_buf);
+
+                var group: Io.Group = .init;
+                defer group.cancel(io);
+
+                for (0..work_size) |_| {
+                    try group.concurrent(io, Match.worker, .{ io, gpa, &work_queue });
+                }
+
+                const window = try Match.updateMatches(io, search_str, matches, &work_queue);
                 for (window) |match| {
                     try stdout.print("{s}\n", .{match.original_str});
                     try stdout.flush();
