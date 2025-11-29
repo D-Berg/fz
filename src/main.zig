@@ -7,6 +7,7 @@ const Tty = @import("Tty.zig");
 const App = @import("App.zig");
 const Match = @import("Match.zig");
 const cli = @import("cli.zig");
+const tracy = @import("tracy.zig");
 
 var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
 
@@ -16,6 +17,9 @@ const is_debug = switch (builtin.mode) {
 };
 
 pub fn main() !void {
+    const tr = tracy.trace(@src());
+    defer tr.end();
+
     const gpa: std.mem.Allocator = switch (is_debug) {
         true => debug_allocator.allocator(),
         false => std.heap.smp_allocator,
@@ -24,17 +28,27 @@ pub fn main() !void {
         assert(debug_allocator.deinit() == .ok);
     };
 
-    var threaded: std.Io.Threaded = .init(gpa);
-    defer threaded.deinit();
-
-    const io = threaded.io();
-
     var arena_impl: std.heap.ArenaAllocator = .init(gpa);
     defer arena_impl.deinit();
 
     const arena = arena_impl.allocator();
 
     const args = try std.process.argsAlloc(arena);
+
+    if (tracy.enable_allocation) {
+        var gpa_tracy = tracy.tracyAllocator(gpa);
+        return mainArgs(gpa_tracy.allocator(), arena, args);
+    }
+
+    try mainArgs(gpa, arena, args);
+}
+
+fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
+    var threaded: std.Io.Threaded = .init(gpa);
+    defer threaded.deinit();
+
+    const io = threaded.io();
+
     const commands = try cli.parse(args, null);
 
     if (std.posix.isatty(std.posix.STDIN_FILENO)) {
@@ -94,7 +108,10 @@ pub fn main() !void {
     }
 }
 
-pub fn run(io: Io, gpa: Allocator, lines: []const []const u8) !?[]const u8 {
+fn run(io: Io, gpa: Allocator, lines: []const []const u8) !?[]const u8 {
+    const tr = tracy.trace(@src());
+    defer tr.end();
+
     var write_buf: [1024]u8 = undefined;
 
     var tty: Tty = try .init(io, "/dev/tty", &.{}, &write_buf);

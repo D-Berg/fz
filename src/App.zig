@@ -8,6 +8,7 @@ const assert = std.debug.assert;
 const Tty = @import("Tty.zig");
 const Match = @import("Match.zig");
 const util = @import("util.zig");
+const tracy = @import("tracy.zig");
 
 const updateMatches = Match.updateMatches;
 
@@ -52,6 +53,9 @@ pub fn deinit(app: *App, gpa: Allocator) void {
 }
 
 pub fn run(app: *App, io: Io, gpa: Allocator, result: *?[]const u8) !void {
+    const tr = tracy.trace(@src());
+    defer tr.end();
+
     const tty = app.tty;
     app.search_str = app.search_buf[0..0];
 
@@ -72,6 +76,7 @@ pub fn run(app: *App, io: Io, gpa: Allocator, result: *?[]const u8) !void {
 
     var buf: [1]u8 = undefined;
     while (true) {
+        tracy.frameMark();
         const n_read = try tty.in.interface.readSliceShort(&buf);
         const maybe_c = if (n_read == 1) buf[0] else null;
 
@@ -127,6 +132,9 @@ pub fn run(app: *App, io: Io, gpa: Allocator, result: *?[]const u8) !void {
 
 const prompt = "> ";
 pub fn draw(app: *App) !void {
+    const tr = tracy.trace(@src());
+    defer tr.end();
+
     const tty = app.tty;
     tty.getWinSize();
 

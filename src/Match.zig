@@ -6,6 +6,7 @@ const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
 const Semaphore = @import("Semaphore.zig");
+const tracy = @import("tracy.zig");
 
 pub const score_min = -std.math.inf(f64);
 pub const score_max = std.math.inf(f64);
@@ -87,6 +88,9 @@ pub fn updateMatches(
     matches: []Match,
     work_queue: *Io.Queue(Work),
 ) ![]const Match {
+    const tr = tracy.trace(@src());
+    defer tr.end();
+
     if (search_str.len == 0) {
         // restore to original
         Match.sortMatches(matches, Match.orderByIdx);
@@ -144,6 +148,8 @@ pub fn worker(io: Io, gpa: Allocator, worker_queue: *Io.Queue(Work)) void {
 }
 
 pub fn updateScore(self: *Match, gpa: Allocator, needle: []const u8) !void {
+    const tr = tracy.trace(@src());
+    defer tr.end();
 
     // reset score
     self.score = score_min;
@@ -161,6 +167,9 @@ pub fn updateScore(self: *Match, gpa: Allocator, needle: []const u8) !void {
 }
 
 fn matchPositions(match: *Match, arena: Allocator, needle: []const u8) !void {
+    const tr = tracy.trace(@src());
+    defer tr.end();
+
     if (needle.len > match.lower_str.len) {
         match.score = score_min;
         return;
@@ -242,6 +251,9 @@ fn matchPositions(match: *Match, arena: Allocator, needle: []const u8) !void {
 }
 
 fn hasMatch(haystack: []const u8, needle: []const u8) bool {
+    const tr = tracy.trace(@src());
+    defer tr.end();
+
     var h = haystack;
 
     var search: [2]u8 = undefined;
@@ -261,6 +273,9 @@ fn hasMatch(haystack: []const u8, needle: []const u8) bool {
 }
 
 fn findAny(slice: []const u8, values: []const u8) ?usize {
+    const tr = tracy.trace(@src());
+    defer tr.end();
+
     if (slice.len == 0) return null;
 
     var remaining = slice[0..];
@@ -308,6 +323,9 @@ fn Matrix(comptime T: type) type {
         }
 
         fn getRow(self: *Self, i: usize) []T {
+            const tr = tracy.trace(@src());
+            defer tr.end();
+
             const start = i * self.cols;
             const end = (i + 1) * self.cols;
             return self.data[start..end];
@@ -330,6 +348,8 @@ pub fn orderByScore(_: void, a: Match, b: Match) bool {
 }
 
 pub fn sortMatches(matches: []Match, orderBy: fn (void, Match, Match) bool) void {
+    const tr = tracy.trace(@src());
+    defer tr.end();
     std.mem.sort(Match, matches, {}, orderBy);
 }
 
