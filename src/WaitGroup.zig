@@ -36,8 +36,6 @@ pub fn done(wg: *WaitGroup, io: Io) error{Canceled}!void {
 
     wg.counter -= 1;
     if (wg.counter == 0) {
-        // std.debug.print("last worker done\n", .{});
-        tracy.message("last worker done");
         wg.cond.broadcast(io);
     }
 }
@@ -51,7 +49,6 @@ pub fn wait(wg: *WaitGroup, io: Io) error{Canceled}!void {
 
     while (wg.counter != 0) {
         try wg.cond.wait(io, &wg.mutex);
-        tracy.message("recived wait signal");
     }
     // std.debug.print("finished waiting\n", .{});
 }
