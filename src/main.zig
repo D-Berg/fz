@@ -44,6 +44,9 @@ pub fn main() !void {
 }
 
 fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
+    const tr = tracy.trace(@src());
+    defer tr.end();
+
     var threaded: std.Io.Threaded = .init(gpa);
     defer threaded.deinit();
 
