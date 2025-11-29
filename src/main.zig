@@ -73,7 +73,7 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
 
         switch (commands) {
             .run => |opts| {
-                if (try run(io, gpa, choices, opts)) |result| {
+                if (try run(io, gpa, choices, input.len_len, opts)) |result| {
                     try stdout.print("{s}\n", .{result});
                     try stdout.flush();
                 }
@@ -128,7 +128,13 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
     }
 }
 
-fn run(io: Io, gpa: Allocator, lines: []const []const u8, opts: cli.RunOptions) !?[]const u8 {
+fn run(
+    io: Io,
+    gpa: Allocator,
+    lines: []const []const u8,
+    len_len: usize,
+    opts: cli.RunOptions,
+) !?[]const u8 {
     const tr = tracy.trace(@src());
     defer tr.end();
 
@@ -137,7 +143,7 @@ fn run(io: Io, gpa: Allocator, lines: []const []const u8, opts: cli.RunOptions) 
     var tty: Tty = try .init(io, "/dev/tty", &.{}, &tty_buf);
     defer tty.deinit();
 
-    var app: App = try .init(gpa, &tty, lines, opts);
+    var app: App = try .init(gpa, &tty, lines, len_len, opts);
     defer app.deinit(gpa);
 
     var result: ?[]const u8 = null;

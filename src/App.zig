@@ -27,7 +27,7 @@ search_buf: [MAX_SEARCH_LEN]u8,
 opts: cli.RunOptions,
 max_input_len: usize,
 
-pub fn init(gpa: Allocator, tty: *Tty, choices: []const []const u8, opts: cli.RunOptions) !App {
+pub fn init(gpa: Allocator, tty: *Tty, choices: []const []const u8, len_len: usize, opts: cli.RunOptions) !App {
     assert(choices.len > 0);
 
     var arena_impl: std.heap.ArenaAllocator = .init(gpa);
@@ -36,12 +36,30 @@ pub fn init(gpa: Allocator, tty: *Tty, choices: []const []const u8, opts: cli.Ru
     const arena = arena_impl.allocator();
 
     var app: App = undefined;
-    var max_input_len: usize = 0;
     const matches = try arena.alloc(Match, choices.len);
+
+    const lower_str_buf = try arena.alloc(u8, len_len);
+    const positions_buf = try arena.alloc(usize, len_len);
+    const bonus_buf = try arena.alloc(Match.Score, len_len);
+
+    var max_input_len: usize = 0;
+    var start: usize = 0;
     for (choices, 0..) |choice, i| {
-        if (choice.len > max_input_len) max_input_len = choice.len;
-        matches[i] = try Match.init(arena, choice, i);
+        const end = start + choice.len;
+        if (choice.len >= max_input_len) max_input_len = choice.len;
+        Match.calculateBonus(bonus_buf[start..end], choice);
+        matches[i] = Match{
+            .original_str = choice,
+            .idx = i,
+            .score = Match.score_min,
+            .lower_str = util.lowerString(lower_str_buf[start..end], choice),
+            .positions = positions_buf[start..end],
+            .bonus = bonus_buf[start..end],
+        };
+
+        start += choice.len;
     }
+
     app.tty = tty;
     app.selected = 0;
     app.matches = matches;

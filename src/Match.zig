@@ -57,7 +57,7 @@ pub fn init(gpa: Allocator, original_str: []const u8, idx: usize) !Match {
     };
 }
 
-fn calculateBonus(bonus: []Score, haystack: []const u8) void {
+pub fn calculateBonus(bonus: []Score, haystack: []const u8) void {
     const tr = tracy.trace(@src());
     defer tr.end();
 
@@ -210,7 +210,7 @@ fn matchPositions(
     const tr = tracy.trace(@src());
     defer tr.end();
 
-    if (needle.len > match.lower_str.len) {
+    if (needle.len > match.lower_str.len or match.lower_str.len > MAX_SEARCH_LEN) {
         match.score = score_min;
         return;
     } else if (needle.len == match.lower_str.len) {
