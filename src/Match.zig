@@ -10,7 +10,7 @@ const WaitGroup = @import("WaitGroup.zig");
 const tracy = @import("tracy.zig");
 
 /// Float
-const Score = f16;
+pub const Score = f16;
 
 pub const score_min = -std.math.inf(Score);
 pub const score_max = std.math.inf(Score);
@@ -166,24 +166,28 @@ pub fn worker(io: Io, gpa: Allocator, worker_queue: *Io.Queue(Work), max_input_l
 
     const arena = arena_impl.allocator();
 
-    var d = Matrix(Score).init(arena, MAX_SEARCH_LEN, max_input_len) catch return;
-    var m = Matrix(Score).init(arena, MAX_SEARCH_LEN, max_input_len) catch return;
+    var d = Matrix(Score).init(arena, MAX_SEARCH_LEN, max_input_len) catch {
+        std.log.err("Failed to allocate matrix", .{});
+        return;
+    };
+    var m = Matrix(Score).init(arena, MAX_SEARCH_LEN, max_input_len) catch {
+        std.log.err("Failed to allocate matrix", .{});
+        return;
+    };
 
     while (worker_queue.getOne(io)) |work| {
         defer work.finnish(io) catch {};
 
-        std.debug.print("worker got work of size: {}\n", .{work.matches.len});
+        // std.debug.print("worker got work of size: {}\n", .{work.matches.len});
         for (work.matches) |*match| {
-            match.updateScore(work.needle, &d, &m) catch {
-                return;
-            };
+            match.updateScore(work.needle, &d, &m);
         }
     } else |_| {
         tracy.message("worker got canceled");
     }
 }
 
-pub fn updateScore(self: *Match, needle: []const u8, d: *Matrix(Score), m: *Matrix(Score)) !void {
+pub fn updateScore(self: *Match, needle: []const u8, d: *Matrix(Score), m: *Matrix(Score)) void {
     const tr = tracy.trace(@src());
     defer tr.end();
 
@@ -240,6 +244,13 @@ fn updateMatrixes(match: *Match, needle: []const u8, d: *Matrix(Score), m: *Matr
         else
             SCORE_GAP_INNER;
 
+        const @"d[i]" = d.row(i);
+        const @"m[i]" = m.row(i);
+
+        // will only be accessed when i > 0
+        const @"d[i - 1]" = if (i > 0) d.row(i - 1) else &.{};
+        const @"m[i - 1]" = if (i > 0) m.row(i - 1) else &.{};
+
         for (match.lower_str, 0..) |h, j| {
             if (n == h) {
                 var score = score_min;
@@ -248,18 +259,18 @@ fn updateMatrixes(match: *Match, needle: []const u8, d: *Matrix(Score), m: *Matr
                     score = (@as(Score, @floatFromInt(j)) * SCORE_GAP_LEADING) + match.bonus[j];
                 } else if (j > 0) {
                     score = @max(
-                        m.row(i - 1)[j - 1] + match.bonus[j],
-                        d.row(i - 1)[j - 1] + SCORE_MATCH_CONSECUTIVE,
+                        @"m[i - 1]"[j - 1] + match.bonus[j],
+                        @"d[i - 1]"[j - 1] + SCORE_MATCH_CONSECUTIVE,
                     );
                 }
 
-                d.row(i)[j] = score;
+                @"d[i]"[j] = score;
                 prev_score = @max(score, prev_score + gap_score);
-                m.row(i)[j] = prev_score;
+                @"m[i]"[j] = prev_score;
             } else {
-                d.row(i)[j] = score_min;
+                @"d[i]"[j] = score_min;
                 prev_score += gap_score;
-                m.row(i)[j] = prev_score;
+                @"m[i]"[j] = prev_score;
             }
         }
     }
@@ -273,6 +284,10 @@ fn updatePositions(match: *Match, needle: []const u8, d: *Matrix(Score), m: *Mat
     var match_required: bool = false;
     var i = needle.len - 1;
     while (i > 0) : (i -= 1) {
+        const @"d[i]" = d.row(i);
+        const @"m[i]" = m.row(i);
+        const @"d[i - 1]" = d.row(i - 1);
+
         var j = match.lower_str.len - 1;
         while (j > 0) : (j -= 1) {
             // There may be multiple paths which result in
@@ -282,14 +297,14 @@ fn updatePositions(match: *Match, needle: []const u8, d: *Matrix(Score), m: *Mat
             // we encounter, the latest in the candidate
             // string.
 
-            if ((d.row(i)[j] != score_min) and
-                (match_required or d.row(i)[j] == m.row(i)[j]))
+            if ((@"d[i]"[j] != score_min) and
+                (match_required or @"d[i]"[j] == @"m[i]"[j]))
             {
                 // If this score was determined using
                 // SCORE_MATCH_CONSECUTIVE, the
                 // previous character MUST be a match
                 match_required = (i != 0) and (j != 0) and
-                    m.row(i)[j] == d.row(i - 1)[j - 1] + SCORE_MATCH_CONSECUTIVE;
+                    @"m[i]"[j] == @"d[i - 1]"[j - 1] + SCORE_MATCH_CONSECUTIVE;
 
                 match.positions[i] = j;
                 j -= 1;

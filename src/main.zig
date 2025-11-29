@@ -8,6 +8,7 @@ const App = @import("App.zig");
 const Match = @import("Match.zig");
 const cli = @import("cli.zig");
 const tracy = @import("tracy.zig");
+const util = @import("util.zig");
 
 var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
 
@@ -55,7 +56,7 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
     const commands = try cli.parse(args, null);
 
     if (std.posix.isatty(std.posix.STDIN_FILENO)) {
-        std.debug.print("you werent piped to\n", .{});
+        // std.debug.print("you werent piped to\n", .{});
         // TODO: get data from default command
     } else {
         var stdin_buf: [32_768]u8 = undefined;
@@ -67,7 +68,8 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
         var stdout_writer = std.fs.File.stdout().writer(&stdout_buf);
         const stdout = &stdout_writer.interface;
 
-        const choices = try getInput(arena, stdin);
+        const input = try getInput(arena, stdin);
+        const choices = input.lines;
 
         switch (commands) {
             .run => |opts| {
@@ -78,14 +80,30 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
             },
             .filter => |opts| {
                 const matches = try arena.alloc(Match, choices.len);
+
+                const lower_str_buf = try arena.alloc(u8, input.len_len);
+                const positions_buf = try arena.alloc(usize, input.len_len);
+                const bonus_buf = try arena.alloc(Match.Score, input.len_len);
+
                 var max_input_len: usize = 0;
+                var start: usize = 0;
                 for (choices, 0..) |choice, i| {
+                    const end = start + choice.len;
                     if (choice.len >= max_input_len) max_input_len = choice.len;
-                    matches[i] = try Match.init(arena, choice, i);
+                    matches[i] = Match{
+                        .original_str = choice,
+                        .idx = i,
+                        .score = Match.score_min,
+                        .lower_str = util.lowerString(lower_str_buf[start..end], choice),
+                        .positions = positions_buf[start..end],
+                        .bonus = bonus_buf[start..end],
+                    };
+
+                    start += choice.len;
                 }
 
-                const work_size = 8; // TODO: dont hardcode it
-                const work_queue_buf = try gpa.alloc(Match.Work, work_size);
+                const worker_count = 8; // TODO: dont hardcode it
+                const work_queue_buf = try gpa.alloc(Match.Work, worker_count);
                 defer gpa.free(work_queue_buf);
 
                 var work_queue: Io.Queue(Match.Work) = .init(work_queue_buf);
@@ -93,7 +111,7 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
                 var group: Io.Group = .init;
                 defer group.cancel(io);
 
-                for (0..work_size) |_| {
+                for (0..worker_count) |_| {
                     try group.concurrent(io, Match.worker, .{ io, gpa, &work_queue, max_input_len });
                 }
 
@@ -130,10 +148,16 @@ fn run(io: Io, gpa: Allocator, lines: []const []const u8, opts: cli.RunOptions) 
     return result;
 }
 
-fn getInput(gpa: Allocator, in: *Io.Reader) ![]const []const u8 {
+const Input = struct {
+    len_len: usize,
+    lines: []const []const u8,
+};
+
+fn getInput(gpa: Allocator, in: *Io.Reader) !Input {
     const tr = tracy.trace(@src());
     defer tr.end();
 
+    var len_len: usize = 0;
     var lines: std.ArrayList([]const u8) = .empty;
     errdefer {
         for (lines.items) |line| {
@@ -145,9 +169,10 @@ fn getInput(gpa: Allocator, in: *Io.Reader) ![]const []const u8 {
     while (try in.takeDelimiter('\n')) |line| {
         try lines.ensureUnusedCapacity(gpa, 1);
         lines.appendAssumeCapacity(try gpa.dupe(u8, line));
+        len_len += line.len;
     }
 
-    return try lines.toOwnedSlice(gpa);
+    return .{ .len_len = len_len, .lines = try lines.toOwnedSlice(gpa) };
 }
 
 test "all" {
