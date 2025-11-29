@@ -55,7 +55,7 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
         std.debug.print("you werent piped to\n", .{});
         // TODO: get data from default command
     } else {
-        var stdin_buf: [4096]u8 = undefined;
+        var stdin_buf: [32_768]u8 = undefined;
         var stdin_reader = std.Io.File.stdin().reader(io, &stdin_buf);
         const stdin = &stdin_reader.interface;
 
