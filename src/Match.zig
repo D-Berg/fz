@@ -389,10 +389,8 @@ fn Matrix(comptime T: type) type {
 
         fn resize(self: *Self, rows: usize, cols: usize) void {
             assert(rows * cols < self.data.len);
-
             self.rows = rows;
             self.cols = cols;
-            @memset(self.data[0 .. rows * cols], 0);
         }
 
         inline fn row(self: *Self, i: usize) []T {
@@ -400,7 +398,7 @@ fn Matrix(comptime T: type) type {
             defer tr.end();
 
             const start = i * self.cols;
-            const end = (i + 1) * self.cols;
+            const end = start + self.cols;
             return self.data[start..end];
         }
     };
