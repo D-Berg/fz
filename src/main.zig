@@ -78,7 +78,9 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
             },
             .filter => |opts| {
                 const matches = try arena.alloc(Match, choices.len);
+                var max_input_len: usize = 0;
                 for (choices, 0..) |choice, i| {
+                    if (choice.len >= max_input_len) max_input_len = choice.len;
                     matches[i] = try Match.init(arena, choice, i);
                 }
 
@@ -92,7 +94,7 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
                 defer group.cancel(io);
 
                 for (0..work_size) |_| {
-                    try group.concurrent(io, Match.worker, .{ io, gpa, &work_queue });
+                    try group.concurrent(io, Match.worker, .{ io, gpa, &work_queue, max_input_len });
                 }
 
                 const window = try Match.updateMatches(io, opts.search_str, matches, &work_queue);

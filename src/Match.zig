@@ -90,7 +90,6 @@ pub const Work = struct {
     }
 };
 
-// TODO: update concurrently
 /// Returns a slice into matches and update each match score
 /// window is not allocated
 pub fn updateMatches(
@@ -158,15 +157,24 @@ fn sendWork(
     }
 }
 
-pub fn worker(io: Io, gpa: Allocator, worker_queue: *Io.Queue(Work)) void {
+pub fn worker(io: Io, gpa: Allocator, worker_queue: *Io.Queue(Work), max_input_len: usize) void {
     const tr = tracy.trace(@src());
     defer tr.end();
 
+    var arena_impl: std.heap.ArenaAllocator = .init(gpa);
+    defer arena_impl.deinit();
+
+    const arena = arena_impl.allocator();
+
+    var d = Matrix(Score).init(arena, MAX_SEARCH_LEN, max_input_len) catch return;
+    var m = Matrix(Score).init(arena, MAX_SEARCH_LEN, max_input_len) catch return;
+
     while (worker_queue.getOne(io)) |work| {
         defer work.finnish(io) catch {};
+
         std.debug.print("worker got work of size: {}\n", .{work.matches.len});
         for (work.matches) |*match| {
-            match.updateScore(gpa, work.needle) catch {
+            match.updateScore(work.needle, &d, &m) catch {
                 return;
             };
         }
@@ -175,7 +183,7 @@ pub fn worker(io: Io, gpa: Allocator, worker_queue: *Io.Queue(Work)) void {
     }
 }
 
-pub fn updateScore(self: *Match, gpa: Allocator, needle: []const u8) !void {
+pub fn updateScore(self: *Match, needle: []const u8, d: *Matrix(Score), m: *Matrix(Score)) !void {
     const tr = tracy.trace(@src());
     defer tr.end();
 
@@ -185,16 +193,18 @@ pub fn updateScore(self: *Match, gpa: Allocator, needle: []const u8) !void {
     @memset(self.positions, 0);
 
     if (hasMatch(self.original_str, needle)) {
-        var arena: std.heap.ArenaAllocator = .init(gpa);
-        defer arena.deinit();
-
-        // if (std.mem.find(u8, self.lower_str, needle)) |_| self.score = score_max;
-
-        try self.matchPositions(arena.allocator(), needle);
+        d.resize(needle.len, self.lower_str.len);
+        m.resize(needle.len, self.lower_str.len);
+        try self.matchPositions(needle, d, m);
     }
 }
 
-fn matchPositions(match: *Match, arena: Allocator, needle: []const u8) !void {
+fn matchPositions(
+    match: *Match,
+    needle: []const u8,
+    d: *Matrix(Score),
+    m: *Matrix(Score),
+) !void {
     const tr = tracy.trace(@src());
     defer tr.end();
 
@@ -212,8 +222,16 @@ fn matchPositions(match: *Match, arena: Allocator, needle: []const u8) !void {
         match.score = score_max;
         return;
     }
-    var d = try Matrix(Score).init(arena, needle.len, match.lower_str.len);
-    var m = try Matrix(Score).init(arena, needle.len, match.lower_str.len);
+
+    match.updateMatrixes(needle, d, m);
+    match.updatePositions(needle, d, m);
+
+    match.score = m.row(needle.len - 1)[match.lower_str.len - 1];
+}
+
+fn updateMatrixes(match: *Match, needle: []const u8, d: *Matrix(Score), m: *Matrix(Score)) void {
+    const tr = tracy.trace(@src());
+    defer tr.end();
 
     for (needle, 0..) |n, i| {
         var prev_score = score_min;
@@ -245,10 +263,6 @@ fn matchPositions(match: *Match, arena: Allocator, needle: []const u8) !void {
             }
         }
     }
-
-    match.updatePositions(needle, &d, &m);
-
-    match.score = m.row(needle.len - 1)[match.lower_str.len - 1];
 }
 
 /// Update Match.positions
@@ -356,6 +370,14 @@ fn Matrix(comptime T: type) type {
                 .rows = rows,
                 .cols = cols,
             };
+        }
+
+        fn resize(self: *Self, rows: usize, cols: usize) void {
+            assert(rows * cols < self.data.len);
+
+            self.rows = rows;
+            self.cols = cols;
+            @memset(self.data[0 .. rows * cols], 0);
         }
 
         inline fn row(self: *Self, i: usize) []T {

@@ -25,6 +25,7 @@ selected: usize = 0,
 search_str: []u8,
 search_buf: [MAX_SEARCH_LEN]u8,
 opts: cli.RunOptions,
+max_input_len: usize,
 
 pub fn init(gpa: Allocator, tty: *Tty, choices: []const []const u8, opts: cli.RunOptions) !App {
     assert(choices.len > 0);
@@ -35,8 +36,10 @@ pub fn init(gpa: Allocator, tty: *Tty, choices: []const []const u8, opts: cli.Ru
     const arena = arena_impl.allocator();
 
     var app: App = undefined;
+    var max_input_len: usize = 0;
     const matches = try arena.alloc(Match, choices.len);
     for (choices, 0..) |choice, i| {
+        if (choice.len > max_input_len) max_input_len = choice.len;
         matches[i] = try Match.init(arena, choice, i);
     }
     app.tty = tty;
@@ -46,7 +49,7 @@ pub fn init(gpa: Allocator, tty: *Tty, choices: []const []const u8, opts: cli.Ru
     app.arena_state = arena_impl.state;
     app.window = matches[0..];
     app.opts = opts;
-
+    app.max_input_len = max_input_len;
     return app;
 }
 
@@ -74,7 +77,7 @@ pub fn run(app: *App, io: Io, gpa: Allocator, result: *?[]const u8) !void {
     defer group.cancel(io);
 
     for (0..work_size) |_| {
-        try group.concurrent(io, Match.worker, .{ io, gpa, &work_queue });
+        try group.concurrent(io, Match.worker, .{ io, gpa, &work_queue, app.max_input_len });
     }
 
     var buf: [1]u8 = undefined;
