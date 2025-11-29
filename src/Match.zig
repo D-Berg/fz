@@ -77,6 +77,10 @@ pub const Work = struct {
     matches: []Match,
     needle: []const u8,
     sema: *Semaphore,
+
+    pub fn finnish(self: *const Work, io: Io) !void {
+        try self.sema.post(io);
+    }
 };
 
 // TODO: update concurrently
@@ -122,10 +126,7 @@ pub fn updateMatches(
         tasks += 1;
     }
 
-    while (tasks > 0) {
-        try sema.wait(io);
-        tasks -= 1;
-    }
+    try waitForWorkToFinnish(io, tasks, &sema);
 
     Match.sortMatches(matches, Match.orderByScore);
 
@@ -135,6 +136,17 @@ pub fn updateMatches(
         len += 1;
     }
     return matches[0..len];
+}
+
+fn waitForWorkToFinnish(io: Io, tasks: usize, sema: *Semaphore) !void {
+    const tr = tracy.trace(@src());
+    defer tr.end();
+
+    var t: usize = tasks;
+    while (t > 0) {
+        try sema.wait(io);
+        t -= 1;
+    }
 }
 
 pub fn worker(io: Io, gpa: Allocator, worker_queue: *Io.Queue(Work)) void {
@@ -202,18 +214,18 @@ fn matchPositions(match: *Match, arena: Allocator, needle: []const u8) !void {
                     score = (@as(f64, @floatFromInt(j)) * SCORE_GAP_LEADING) + match.bonus[j];
                 } else if (j > 0) {
                     score = @max(
-                        m.getRow(i - 1)[j - 1] + match.bonus[j],
-                        d.getRow(i - 1)[j - 1] + SCORE_MATCH_CONSECUTIVE,
+                        m.row(i - 1)[j - 1] + match.bonus[j],
+                        d.row(i - 1)[j - 1] + SCORE_MATCH_CONSECUTIVE,
                     );
                 }
 
-                d.getRow(i)[j] = score;
+                d.row(i)[j] = score;
                 prev_score = @max(score, prev_score + gap_score);
-                m.getRow(i)[j] = prev_score;
+                m.row(i)[j] = prev_score;
             } else {
-                d.getRow(i)[j] = score_min;
+                d.row(i)[j] = score_min;
                 prev_score += gap_score;
-                m.getRow(i)[j] = prev_score;
+                m.row(i)[j] = prev_score;
             }
         }
     }
@@ -230,14 +242,14 @@ fn matchPositions(match: *Match, arena: Allocator, needle: []const u8) !void {
             // we encounter, the latest in the candidate
             // string.
 
-            if ((d.getRow(i)[j] != score_min) and
-                (match_required or d.getRow(i)[j] == m.getRow(i)[j]))
+            if ((d.row(i)[j] != score_min) and
+                (match_required or d.row(i)[j] == m.row(i)[j]))
             {
                 // If this score was determined using
                 // SCORE_MATCH_CONSECUTIVE, the
                 // previous character MUST be a match
                 match_required = (i != 0) and (j != 0) and
-                    m.getRow(i)[j] == d.getRow(i - 1)[j - 1] + SCORE_MATCH_CONSECUTIVE;
+                    m.row(i)[j] == d.row(i - 1)[j - 1] + SCORE_MATCH_CONSECUTIVE;
 
                 match.positions[i] = j;
                 j -= 1;
@@ -247,7 +259,7 @@ fn matchPositions(match: *Match, arena: Allocator, needle: []const u8) !void {
         }
     }
 
-    match.score = m.getVal(needle.len - 1, match.lower_str.len - 1);
+    match.score = m.row(needle.len - 1)[match.lower_str.len - 1];
 }
 
 fn hasMatch(haystack: []const u8, needle: []const u8) bool {
@@ -322,17 +334,13 @@ fn Matrix(comptime T: type) type {
             };
         }
 
-        fn getRow(self: *Self, i: usize) []T {
+        inline fn row(self: *Self, i: usize) []T {
             const tr = tracy.trace(@src());
             defer tr.end();
 
             const start = i * self.cols;
             const end = (i + 1) * self.cols;
             return self.data[start..end];
-        }
-
-        fn getVal(self: *Self, i: usize, j: usize) T {
-            return self.data[i * self.cols + j];
         }
     };
 }

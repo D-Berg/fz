@@ -64,29 +64,23 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
         var stdout_writer = std.fs.File.stdout().writer(&stdout_buf);
         const stdout = &stdout_writer.interface;
 
-        var lines: std.ArrayList([]const u8) = .empty;
-        while (try stdin.takeDelimiter('\n')) |line| {
-            try lines.ensureUnusedCapacity(arena, 1);
-            lines.appendAssumeCapacity(try arena.dupe(u8, line));
-        }
+        const choices = try getInput(arena, stdin);
 
         switch (commands) {
-            .run => {
-                if (try run(io, gpa, lines.items)) |result| {
+            .run => |opts| {
+                if (try run(io, gpa, choices, opts)) |result| {
                     try stdout.print("{s}\n", .{result});
                     try stdout.flush();
                 }
             },
-            .filter => |search_str| {
-                const choices = lines.items;
-
+            .filter => |opts| {
                 const matches = try arena.alloc(Match, choices.len);
                 for (choices, 0..) |choice, i| {
                     matches[i] = try Match.init(arena, choice, i);
                 }
 
                 const work_size = 8;
-                const work_queue_buf = try gpa.alloc(Match.Work, work_size);
+                const work_queue_buf = try gpa.alloc(Match.Work, 1024);
                 defer gpa.free(work_queue_buf);
 
                 var work_queue: Io.Queue(Match.Work) = .init(work_queue_buf);
@@ -98,9 +92,13 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
                     try group.concurrent(io, Match.worker, .{ io, gpa, &work_queue });
                 }
 
-                const window = try Match.updateMatches(io, search_str, matches, &work_queue);
+                const window = try Match.updateMatches(io, opts.search_str, matches, &work_queue);
                 for (window) |match| {
-                    try stdout.print("{s}\n", .{match.original_str});
+                    if (opts.show_scores) {
+                        try stdout.print("({d:.2}) {s}\n", .{ match.score, match.original_str });
+                    } else {
+                        try stdout.print("{s}\n", .{match.original_str});
+                    }
                     try stdout.flush();
                 }
             },
@@ -108,7 +106,7 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
     }
 }
 
-fn run(io: Io, gpa: Allocator, lines: []const []const u8) !?[]const u8 {
+fn run(io: Io, gpa: Allocator, lines: []const []const u8, opts: cli.RunOptions) !?[]const u8 {
     const tr = tracy.trace(@src());
     defer tr.end();
 
@@ -117,7 +115,7 @@ fn run(io: Io, gpa: Allocator, lines: []const []const u8) !?[]const u8 {
     var tty: Tty = try .init(io, "/dev/tty", &.{}, &write_buf);
     defer tty.deinit();
 
-    var app: App = try .init(gpa, &tty, lines);
+    var app: App = try .init(gpa, &tty, lines, opts);
     defer app.deinit(gpa);
 
     var result: ?[]const u8 = null;
@@ -125,6 +123,26 @@ fn run(io: Io, gpa: Allocator, lines: []const []const u8) !?[]const u8 {
     try app.run(io, gpa, &result);
 
     return result;
+}
+
+fn getInput(gpa: Allocator, in: *Io.Reader) ![]const []const u8 {
+    const tr = tracy.trace(@src());
+    defer tr.end();
+
+    var lines: std.ArrayList([]const u8) = .empty;
+    errdefer {
+        for (lines.items) |line| {
+            gpa.free(line);
+        }
+        lines.deinit(gpa);
+    }
+
+    while (try in.takeDelimiter('\n')) |line| {
+        try lines.ensureUnusedCapacity(gpa, 1);
+        lines.appendAssumeCapacity(try gpa.dupe(u8, line));
+    }
+
+    return try lines.toOwnedSlice(gpa);
 }
 
 test "all" {

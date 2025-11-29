@@ -9,6 +9,7 @@ const Tty = @import("Tty.zig");
 const Match = @import("Match.zig");
 const util = @import("util.zig");
 const tracy = @import("tracy.zig");
+const cli = @import("cli.zig");
 
 const updateMatches = Match.updateMatches;
 
@@ -23,8 +24,9 @@ window: []const Match,
 selected: usize = 0,
 search_str: []u8,
 search_buf: [MAX_SEARCH_LEN]u8,
+opts: cli.RunOptions,
 
-pub fn init(gpa: Allocator, tty: *Tty, choices: []const []const u8) !App {
+pub fn init(gpa: Allocator, tty: *Tty, choices: []const []const u8, opts: cli.RunOptions) !App {
     assert(choices.len > 0);
 
     var arena_impl: std.heap.ArenaAllocator = .init(gpa);
@@ -43,6 +45,7 @@ pub fn init(gpa: Allocator, tty: *Tty, choices: []const []const u8) !App {
     app.search_buf = undefined;
     app.arena_state = arena_impl.state;
     app.window = matches[0..];
+    app.opts = opts;
 
     return app;
 }
@@ -135,6 +138,8 @@ pub fn draw(app: *App) !void {
     const tr = tracy.trace(@src());
     defer tr.end();
 
+    const show_scores = app.opts.show_scores;
+
     const tty = app.tty;
     tty.getWinSize();
 
@@ -177,13 +182,13 @@ pub fn draw(app: *App) !void {
 
             try tty.print("\x1b[48;2;100;100;100m", .{});
 
-            if (builtin.mode == .Debug) try tty.print("({d:.2})", .{match.score});
+            if (builtin.mode == .Debug or show_scores) try tty.print("({d:.2})", .{match.score});
 
             try tty.print("  {s}", .{str[0..max_width]});
             try tty.print("\x1b[m", .{});
         } else {
             try tty.print("\x1b[38;2;100;100;100m▌\x1b[m", .{});
-            if (builtin.mode == .Debug) try tty.print("({d:.2})", .{match.score});
+            if (builtin.mode == .Debug or show_scores) try tty.print("({d:.2})", .{match.score});
             try tty.print("  {s}", .{str[0..max_width]});
         }
 
