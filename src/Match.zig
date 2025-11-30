@@ -111,10 +111,8 @@ pub fn updateMatches(
     var buf: [MAX_SEARCH_LEN]u8 = undefined;
     const needle = util.lowerString(&buf, search_str);
 
-    // var sema: Semaphore = .{ .permits = 0 };
     var wg: WaitGroup = .init;
     try sendWork(io, &wg, needle, matches, work_queue);
-    // try waitForWorkToFinnish(io, tasks, &wg);
     try wg.wait(io);
 
     Match.sortMatches(matches, Match.orderByScore);
