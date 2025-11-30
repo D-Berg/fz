@@ -10,7 +10,7 @@ const WaitGroup = @import("WaitGroup.zig");
 const tracy = @import("tracy.zig");
 
 /// Float
-pub const Score = f32;
+pub const Score = f16;
 
 pub const score_min = -std.math.inf(Score);
 pub const score_max = std.math.inf(Score);
