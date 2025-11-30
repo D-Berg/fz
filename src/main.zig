@@ -77,6 +77,8 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
                     try stdout.print("{s}\n", .{result});
                     try stdout.flush();
                 }
+
+                if (builtin.mode == .ReleaseFast) std.process.exit(0);
             },
             .filter => |opts| {
                 const matches = try arena.alloc(Match, choices.len);
@@ -90,13 +92,16 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
                 for (choices, 0..) |choice, i| {
                     const end = start + choice.len;
                     if (choice.len >= max_input_len) max_input_len = choice.len;
+                    const bonus = bonus_buf[start..end];
+                    Match.calculateBonus(bonus, choice);
+
                     matches[i] = Match{
                         .original_str = choice,
                         .idx = i,
                         .score = Match.score_min,
                         .lower_str = util.lowerString(lower_str_buf[start..end], choice),
                         .positions = positions_buf[start..end],
-                        .bonus = bonus_buf[start..end],
+                        .bonus = bonus,
                     };
 
                     start += choice.len;
@@ -121,8 +126,10 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
                     } else {
                         try stdout.print("{s}\n", .{match.original_str});
                     }
-                    try stdout.flush();
                 }
+                try stdout.flush();
+
+                if (builtin.mode == .ReleaseFast) std.process.exit(0);
             },
         }
     }
