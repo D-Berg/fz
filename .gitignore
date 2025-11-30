@@ -2,3 +2,4 @@ zig-out
 .zig-cache
 files
 giant_list
+profile.json.gz
