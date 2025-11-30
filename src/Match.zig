@@ -10,7 +10,7 @@ const WaitGroup = @import("WaitGroup.zig");
 const tracy = @import("tracy.zig");
 
 /// Float
-pub const Score = f16;
+pub const Score = f32;
 
 pub const score_min = -std.math.inf(Score);
 pub const score_max = std.math.inf(Score);
@@ -36,26 +36,6 @@ score: Score = score_min,
 lower_str: []const u8,
 positions: []usize,
 bonus: []Score,
-
-pub fn init(gpa: Allocator, original_str: []const u8, idx: usize) !Match {
-    const lower_str = try util.lowerStringAlloc(gpa, original_str);
-    errdefer gpa.free(lower_str);
-
-    const positions = try gpa.alloc(usize, original_str.len);
-    errdefer gpa.free(positions);
-    @memset(positions, 0);
-
-    const bonus = try gpa.alloc(Score, original_str.len);
-    calculateBonus(bonus, original_str);
-
-    return .{
-        .original_str = original_str,
-        .idx = idx,
-        .lower_str = lower_str,
-        .positions = positions,
-        .bonus = bonus,
-    };
-}
 
 pub fn calculateBonus(bonus: []Score, haystack: []const u8) void {
     const tr = tracy.trace(@src());
@@ -117,12 +97,15 @@ pub fn updateMatches(
 
     Match.sortMatches(matches, Match.orderByScore);
 
+    var start: usize = 0;
     var len: usize = 0;
     for (matches) |match| {
         if (match.score <= 0) break;
+        if (match.score == score_max) start += 1;
         len += 1;
     }
-    return matches[0..len];
+    assert(start <= len);
+    return matches[start..len];
 }
 
 fn sendWork(
@@ -323,7 +306,7 @@ fn hasMatch(haystack: []const u8, needle: []const u8) bool {
         search[1] = std.ascii.toUpper(c);
 
         if (findAny(h, search[0..])) |idx| {
-            h = h[idx + 1 ..];
+            h = haystack[idx + 1 ..];
             continue;
         }
 
