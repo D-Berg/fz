@@ -103,7 +103,7 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
                 }
 
                 const worker_count = 8; // TODO: dont hardcode it
-                const work_queue_buf = try arena.alloc(Match.Work, worker_count);
+                const work_queue_buf = try arena.alloc(Match.Work, 1024);
 
                 var work_queue: Io.Queue(Match.Work) = .init(work_queue_buf);
 

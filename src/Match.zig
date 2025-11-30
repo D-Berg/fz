@@ -396,7 +396,7 @@ pub fn orderByScore(_: void, a: Match, b: Match) bool {
 pub fn sortMatches(matches: []Match, orderBy: fn (void, Match, Match) bool) void {
     const tr = tracy.trace(@src());
     defer tr.end();
-    std.mem.sort(Match, matches, {}, orderBy);
+    std.mem.sortUnstable(Match, matches, {}, orderBy);
 }
 
 test hasMatch {
