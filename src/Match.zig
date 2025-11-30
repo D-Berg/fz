@@ -121,6 +121,7 @@ fn sendWork(
     const max_chunk_size: usize = matches.len / work_queue.capacity();
     var remaining = matches[0..];
     while (remaining.len > 0) {
+        try wg.add(io, 1);
         const chunk_size = if (remaining.len > max_chunk_size)
             max_chunk_size
         else
@@ -133,8 +134,6 @@ fn sendWork(
             .wg = wg,
         });
         remaining = remaining[chunk_size..];
-
-        try wg.add(io, 1);
     }
 }
 

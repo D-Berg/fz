@@ -55,83 +55,105 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
 
     const commands = try cli.parse(args, null);
 
-    if (std.posix.isatty(std.posix.STDIN_FILENO)) {
-        // std.debug.print("you werent piped to\n", .{});
-        // TODO: get data from default command
-    } else {
-        var stdin_buf: [4 * 65_536]u8 = undefined;
-        var stdin_reader = std.Io.File.stdin().reader(io, &stdin_buf);
-        const stdin = &stdin_reader.interface;
+    var child: ?std.process.Child = null;
+    defer if (child) |*c| {
+        _ = c.kill() catch {};
+    };
 
-        // TODO: change to std.Io.File when writing works
-        var stdout_buf: [8192]u8 = undefined;
-        var stdout_writer = std.fs.File.stdout().writer(&stdout_buf);
-        const stdout = &stdout_writer.interface;
+    var env = try std.process.getEnvMap(arena);
 
-        const input = try getInput(arena, stdin);
-        const choices = input.lines;
+    var stdin_buf: [4 * 65_536]u8 = undefined;
+    var stdin_reader = blk: {
+        if (std.posix.isatty(std.posix.STDIN_FILENO)) {
+            var child_argv: std.ArrayList([]const u8) = .empty;
 
-        switch (commands) {
-            .run => |opts| {
-                if (try run(io, gpa, choices, input.len_len, opts)) |result| {
-                    try stdout.print("{s}\n", .{result});
-                    try stdout.flush();
-                }
+            const argv_str = env.get("FZF_DEFAULT_COMMAND") orelse "find . -type f";
 
-                if (builtin.mode == .ReleaseFast) std.process.exit(0);
-            },
-            .filter => |opts| {
-                const matches = try arena.alloc(Match, choices.len);
+            var it = std.mem.splitScalar(u8, argv_str, ' ');
+            while (it.next()) |child_arg| {
+                try child_argv.append(arena, child_arg);
+            }
 
-                const lower_str_buf = try arena.alloc(u8, input.len_len);
-                const positions_buf = try arena.alloc(usize, input.len_len);
-                const bonus_buf = try arena.alloc(Match.Score, input.len_len);
+            child = std.process.Child.init(child_argv.items, gpa);
+            child.?.stdout_behavior = .Pipe;
 
-                var max_input_len: usize = 0;
-                var start: usize = 0;
-                for (choices, 0..) |choice, i| {
-                    const end = start + choice.len;
-                    if (choice.len >= max_input_len) max_input_len = choice.len;
-                    const bonus = bonus_buf[start..end];
-                    // Match.calculateBonus(bonus, choice); // TODO: calc bonus
+            try child.?.spawn();
 
-                    matches[i] = Match{
-                        .original_str = choice,
-                        .idx = i,
-                        .score = Match.score_min,
-                        .lower_str = util.lowerString(lower_str_buf[start..end], choice),
-                        .positions = positions_buf[start..end],
-                        .bonus = bonus,
-                    };
-
-                    start += choice.len;
-                }
-
-                const worker_count = 8; // TODO: dont hardcode it
-                const work_queue_buf = try arena.alloc(Match.Work, 1024);
-
-                var work_queue: Io.Queue(Match.Work) = .init(work_queue_buf);
-
-                var group: Io.Group = .init;
-                defer group.cancel(io);
-
-                for (0..worker_count) |_| {
-                    try group.concurrent(io, Match.worker, .{ io, gpa, &work_queue, max_input_len });
-                }
-
-                const window = try Match.updateMatches(io, opts.search_str, matches, &work_queue);
-                for (window) |match| {
-                    if (opts.show_scores) {
-                        try stdout.print("({d:.2}) {s}\n", .{ match.score, match.original_str });
-                    } else {
-                        try stdout.print("{s}\n", .{match.original_str});
-                    }
-                }
-                try stdout.flush();
-
-                if (builtin.mode == .ReleaseFast) std.process.exit(0);
-            },
+            break :blk child.?.stdout.?.reader(io, &stdin_buf);
         }
+
+        break :blk std.Io.File.stdin().reader(io, &stdin_buf);
+    };
+
+    const stdin = &stdin_reader.interface;
+
+    // TODO: change to std.Io.File when writing works
+    var stdout_buf: [8192]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&stdout_buf);
+    const stdout = &stdout_writer.interface;
+
+    const input = try getInput(arena, stdin);
+    const choices = input.lines;
+
+    switch (commands) {
+        .run => |opts| {
+            if (try run(io, gpa, choices, input.len_len, opts)) |result| {
+                try stdout.print("{s}\n", .{result});
+                try stdout.flush();
+            }
+            if (builtin.mode == .ReleaseFast) std.process.exit(0);
+        },
+        .filter => |opts| {
+            const matches = try arena.alloc(Match, choices.len);
+
+            const lower_str_buf = try arena.alloc(u8, input.len_len);
+            const positions_buf = try arena.alloc(usize, input.len_len);
+            const bonus_buf = try arena.alloc(Match.Score, input.len_len);
+
+            var max_input_len: usize = 0;
+            var start: usize = 0;
+            for (choices, 0..) |choice, i| {
+                const end = start + choice.len;
+                if (choice.len >= max_input_len) max_input_len = choice.len;
+                const bonus = bonus_buf[start..end];
+                // Match.calculateBonus(bonus, choice); // TODO: calc bonus
+
+                matches[i] = Match{
+                    .original_str = choice,
+                    .idx = i,
+                    .score = Match.score_min,
+                    .lower_str = util.lowerString(lower_str_buf[start..end], choice),
+                    .positions = positions_buf[start..end],
+                    .bonus = bonus,
+                };
+
+                start += choice.len;
+            }
+
+            const worker_count = 8; // TODO: dont hardcode it
+            const work_queue_buf = try arena.alloc(Match.Work, 8);
+
+            var work_queue: Io.Queue(Match.Work) = .init(work_queue_buf);
+
+            var group: Io.Group = .init;
+            defer group.cancel(io);
+
+            for (0..worker_count) |_| {
+                try group.concurrent(io, Match.worker, .{ io, gpa, &work_queue, max_input_len });
+            }
+
+            const window = try Match.updateMatches(io, opts.search_str, matches, &work_queue);
+            for (window) |match| {
+                if (opts.show_scores) {
+                    try stdout.print("({d:.2}) {s}\n", .{ match.score, match.original_str });
+                } else {
+                    try stdout.print("{s}\n", .{match.original_str});
+                }
+            }
+            try stdout.flush();
+
+            if (builtin.mode == .ReleaseFast) std.process.exit(0);
+        },
     }
 }
 

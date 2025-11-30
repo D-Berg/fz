@@ -23,9 +23,9 @@ zig build -Doptimize=ReleaseFast
 
 ## TODO
 
-- [ ] improve performance on large item sets
-- [ ] minimize memory usage on large item sets
+- [x] improve performance on large item sets
+- [] minimize memory usage on large item sets
 - [ ] decouple UI from search
 - [ ] fzf like preview
-- [ ] default command to run from env
+- [x] default command to run from env
 

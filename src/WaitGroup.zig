@@ -34,7 +34,7 @@ pub fn done(wg: *WaitGroup, io: Io) error{Canceled}!void {
     try wg.mutex.lock(io);
     defer wg.mutex.unlock(io);
 
-    wg.counter -= 1;
+    if (wg.counter > 0) wg.counter -= 1;
     if (wg.counter == 0) {
         wg.cond.broadcast(io);
     }
