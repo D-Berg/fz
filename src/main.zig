@@ -107,7 +107,7 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
             const matches = try arena.alloc(Match, choices.len);
 
             const lower_str_buf = try arena.alloc(u8, input.len_len);
-            const positions_buf = try arena.alloc(usize, input.len_len);
+            const positions_buf = try arena.alloc(bool, input.len_len);
             const bonus_buf = try arena.alloc(Match.Score, input.len_len);
 
             var max_input_len: usize = 0;
@@ -145,10 +145,9 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
             const window = try Match.updateMatches(io, opts.search_str, matches, &work_queue);
             for (window) |match| {
                 if (opts.show_scores) {
-                    try stdout.print("({d:.2}) {s}\n", .{ match.score, match.original_str });
-                } else {
-                    try stdout.print("{s}\n", .{match.original_str});
+                    try stdout.print("({d:.2}) ", .{match.score});
                 }
+                try stdout.print("{s}\n", .{match.original_str});
             }
             try stdout.flush();
 

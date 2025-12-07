@@ -34,7 +34,7 @@ idx: usize,
 score: Score = score_min,
 /// memory owned by match
 lower_str: []const u8,
-positions: []usize,
+positions: []bool,
 bonus: []Score,
 
 pub fn calculateBonus(bonus: []Score, haystack: []const u8) void {
@@ -198,7 +198,7 @@ fn matchPositions(
         //matches needle. If the lengths of the strings are equal the
         //strings themselves must also be equal (ignoring case).
         for (0..match.positions.len) |i| {
-            match.positions[i] = i;
+            match.positions[i] = true;
         }
 
         match.score = score_max;
@@ -215,41 +215,54 @@ fn updateMatrixes(match: *Match, needle: []const u8, d: *Matrix(Score), m: *Matr
     const tr = tracy.trace(@src());
     defer tr.end();
 
-    for (needle, 0..) |n, i| {
-        var prev_score = score_min;
-        const gap_score: Score = if (i == needle.len - 1)
-            SCORE_GAP_TRAILING
-        else
-            SCORE_GAP_INNER;
+    match.updateRow(0, needle, d.row(0), m.row(0), d.row(0), d.row(0));
+    for (1..needle.len) |i| {
+        match.updateRow(i, needle, d.row(i), m.row(i), d.row(i - 1), d.row(i - 1));
+    }
+}
 
-        const @"d[i]" = d.row(i);
-        const @"m[i]" = m.row(i);
+fn updateRow(
+    match: *Match,
+    i: usize,
+    needle: []const u8,
+    curr_d: []Score,
+    curr_m: []Score,
+    last_d: []Score,
+    last_m: []Score,
+) void {
+    const haystack = match.lower_str;
 
-        // will only be accessed when i > 0
-        const @"d[i - 1]" = if (i > 0) d.row(i - 1) else &.{};
-        const @"m[i - 1]" = if (i > 0) m.row(i - 1) else &.{};
+    var prev_score: Score = score_min;
+    var prev_d: Score = score_min;
+    var prev_m: Score = score_min;
+    const gap_score: Score = if (i == needle.len - 1)
+        SCORE_GAP_TRAILING
+    else
+        SCORE_GAP_INNER;
 
-        for (match.lower_str, 0..) |h, j| {
-            if (n == h) {
-                var score = score_min;
-
-                if (i == 0) {
-                    score = (@as(Score, @floatFromInt(j)) * SCORE_GAP_LEADING) + match.bonus[j];
-                } else if (j > 0) {
-                    score = @max(
-                        @"m[i - 1]"[j - 1] + match.bonus[j],
-                        @"d[i - 1]"[j - 1] + SCORE_MATCH_CONSECUTIVE,
-                    );
-                }
-
-                @"d[i]"[j] = score;
-                prev_score = @max(score, prev_score + gap_score);
-                @"m[i]"[j] = prev_score;
-            } else {
-                @"d[i]"[j] = score_min;
-                prev_score += gap_score;
-                @"m[i]"[j] = prev_score;
+    for (0..haystack.len) |j| {
+        if (needle[i] == haystack[j]) {
+            var score = score_min;
+            if (i == 0) {
+                score = (@as(Score, @floatFromInt(j)) * SCORE_GAP_LEADING) + match.bonus[j];
+            } else if (j > 0) {
+                score = @max(
+                    prev_m + match.bonus[j],
+                    prev_d + SCORE_MATCH_CONSECUTIVE,
+                );
             }
+
+            prev_d = last_d[j];
+            prev_m = last_m[j];
+            curr_d[j] = score;
+            prev_score = @max(score, prev_score + gap_score);
+            curr_m[j] = prev_score;
+        } else {
+            prev_d = last_d[j];
+            prev_m = last_m[j];
+            curr_d[j] = score_min;
+            prev_score += gap_score;
+            curr_m[j] = prev_score;
         }
     }
 }
@@ -260,14 +273,16 @@ fn updatePositions(match: *Match, needle: []const u8, d: *Matrix(Score), m: *Mat
     defer tr.end();
 
     var match_required: bool = false;
-    var i = needle.len - 1;
-    while (i > 0) : (i -= 1) {
+    var i = needle.len;
+    while (i > 0) {
+        i -= 1;
         const @"d[i]" = d.row(i);
         const @"m[i]" = m.row(i);
-        const @"d[i - 1]" = d.row(i - 1);
+        const @"d[i - 1]" = if (i > 0) d.row(i - 1) else &.{};
 
-        var j = match.lower_str.len - 1;
-        while (j > 0) : (j -= 1) {
+        var j = match.lower_str.len;
+        while (j > 0) {
+            j -= 1;
             // There may be multiple paths which result in
             // the optimal weight.
             //
@@ -281,14 +296,15 @@ fn updatePositions(match: *Match, needle: []const u8, d: *Matrix(Score), m: *Mat
                 // If this score was determined using
                 // SCORE_MATCH_CONSECUTIVE, the
                 // previous character MUST be a match
-                match_required = (i != 0) and (j != 0) and
-                    @"m[i]"[j] == @"d[i - 1]"[j - 1] + SCORE_MATCH_CONSECUTIVE;
+                if (i > 0 and j > 0) {
+                    match_required = @"m[i]"[j] == @"d[i - 1]"[j - 1] + SCORE_MATCH_CONSECUTIVE;
+                }
 
-                match.positions[i] = j;
-                j -= 1;
+                match.positions[j] = true;
 
                 break;
             }
+            match.positions[i] = false;
         }
     }
 }

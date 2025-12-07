@@ -39,7 +39,7 @@ pub fn init(gpa: Allocator, tty: *Tty, choices: []const []const u8, len_len: usi
     const matches = try arena.alloc(Match, choices.len);
 
     const lower_str_buf = try arena.alloc(u8, len_len);
-    const positions_buf = try arena.alloc(usize, len_len);
+    const positions_buf = try arena.alloc(bool, len_len);
     const bonus_buf = try arena.alloc(Match.Score, len_len);
 
     var max_input_len: usize = 0;
@@ -186,6 +186,7 @@ pub fn draw(app: *App) !void {
 
     var row = tty.max_height - 1;
     for (start..end) |i| {
+        const selected = app.selected == i;
         try tty.moveTo(row, 1);
 
         try tty.clearLine();
@@ -195,23 +196,31 @@ pub fn draw(app: *App) !void {
         const str = match.original_str;
         const max_width = @min(tty.max_width - 10, str.len);
 
-        if (app.selected == i) {
-            try tty.print("\x1b[38;2;197;41;96m", .{}); // red
-            try tty.print("\x1b[48;2;100;100;100m", .{});
-            try tty.print("▌", .{});
-            try tty.print("\x1b[m", .{});
-
-            try tty.print("\x1b[48;2;100;100;100m", .{});
-
-            if (builtin.mode == .Debug or show_scores) try tty.print("({d:.2})", .{match.score});
-
-            try tty.print("  {s}", .{str[0..max_width]});
-            try tty.print("\x1b[m", .{});
+        if (selected) {
+            try tty.setColor(.fzf_red);
+            try tty.setColor(.highlight_gray);
         } else {
-            try tty.print("\x1b[38;2;100;100;100m▌\x1b[m", .{});
-            if (builtin.mode == .Debug or show_scores) try tty.print("({d:.2})", .{match.score});
-            try tty.print("  {s}", .{str[0..max_width]});
+            try tty.setColor(.fzf_gray);
         }
+        try tty.print("▌", .{});
+        try tty.setColor(.reset);
+        if (selected) try tty.setColor(.highlight_gray);
+        if (builtin.mode == .Debug or show_scores) try tty.print("({d:.2})", .{match.score});
+
+        try tty.print("  ", .{});
+        for (0..max_width) |c_idx| {
+            if (match.positions[c_idx]) {
+                try tty.setColor(.green);
+                try tty.setColor(.bold);
+            } else {
+                try tty.setColor(.reset);
+                if (selected) try tty.setColor(.highlight_gray);
+            }
+
+            try tty.writeByte(str[c_idx]);
+        }
+
+        try tty.setColor(.reset);
 
         row -= 1;
     }
