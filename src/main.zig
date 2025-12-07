@@ -116,7 +116,7 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
                 const end = start + choice.len;
                 if (choice.len >= max_input_len) max_input_len = choice.len;
                 const bonus = bonus_buf[start..end];
-                // Match.calculateBonus(bonus, choice); // TODO: calc bonus
+                Match.calculateBonus(bonus, choice); // TODO: calc bonus
 
                 matches[i] = Match{
                     .original_str = choice,

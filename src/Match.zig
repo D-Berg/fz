@@ -324,10 +324,11 @@ fn findAny(slice: []const u8, values: []const u8) ?usize {
     var remaining = slice[0..];
     var i: usize = 0;
     if (build_options.use_simd) if (std.simd.suggestVectorLength(u8)) |vec_len| {
+        const Chunk = @Vector(vec_len, u8);
         while (remaining.len >= vec_len) {
-            const chunk_slice: @Vector(vec_len, u8) = remaining[0..vec_len].*;
+            const chunk_slice: Chunk = remaining[0..vec_len].*;
             for (values) |value| {
-                const vector_value: @Vector(vec_len, u8) = @splat(value);
+                const vector_value: Chunk = @splat(value);
                 const matches = chunk_slice == vector_value;
                 const maybe_idx = std.simd.firstTrue(matches);
                 if (maybe_idx) |idx| return i + idx;
