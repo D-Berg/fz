@@ -106,6 +106,14 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
         .filter => |opts| {
             try filter(io, gpa, arena, input, opts);
         },
+        .version => |version| {
+            var stdout_buf: [64]u8 = undefined;
+            var stdout_writer = std.fs.File.stdout().writer(&stdout_buf);
+            const stdout: *Io.Writer = &stdout_writer.interface;
+
+            try stdout.print("{s}\n", .{version});
+            try stdout.flush();
+        },
     }
 
     if (builtin.mode == .ReleaseFast) std.process.exit(0);

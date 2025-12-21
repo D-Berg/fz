@@ -1,9 +1,11 @@
 const std = @import("std");
 const assert = std.debug.assert;
+const build_options = @import("build_options");
 
 pub const Command = union(enum) {
     filter: FilterOptions,
     run: RunOptions,
+    version: []const u8,
 };
 
 pub const RunOptions = struct {
@@ -60,6 +62,8 @@ pub fn parse(args: []const []const u8, diag: ?*Diagnostic) !Command {
             };
         } else if (std.mem.eql(u8, "--show-scores", arg) or std.mem.eql(u8, "-s", arg)) {
             show_scores = true;
+        } else if (std.mem.eql(u8, "--version", arg) or std.mem.eql(u8, "-v", arg)) {
+            return .{ .version = build_options.version };
         }
     }
 
