@@ -143,7 +143,7 @@ fn filter(io: Io, gpa: Allocator, arena: Allocator, input: Input, opts: cli.Filt
     var stdout_writer = std.fs.File.stdout().writer(&stdout_buf);
     const stdout = &stdout_writer.interface;
 
-    const work_queue_buf = try arena.alloc(Match.Work, 2048);
+    const work_queue_buf = try arena.alloc(Match.Work, input.matches.len);
     var work_queue: Io.Queue(Match.Work) = .init(work_queue_buf);
 
     var group: Io.Group = .init;
