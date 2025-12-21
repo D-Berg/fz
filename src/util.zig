@@ -55,28 +55,40 @@ pub fn ctrl(k: u8) u8 {
 pub const Input = struct {
     len_len: usize,
     lines: []const []const u8,
+    data: []const u8,
 };
 
 pub fn getInput(gpa: Allocator, in: *Io.Reader) !Input {
     const tr = tracy.trace(@src());
     defer tr.end();
 
-    var len_len: usize = 0;
-    var lines: std.ArrayList([]const u8) = .empty;
-    errdefer {
-        for (lines.items) |line| {
-            gpa.free(line);
-        }
-        lines.deinit(gpa);
-    }
+    var aw: Io.Writer.Allocating = .init(gpa);
+    errdefer aw.deinit();
 
-    while (try in.takeDelimiter('\n')) |line| {
-        try lines.ensureUnusedCapacity(gpa, 1);
-        lines.appendAssumeCapacity(try gpa.dupe(u8, line));
+    _ = try in.streamRemaining(&aw.writer);
+
+    const written = try aw.toOwnedSlice();
+    errdefer gpa.free(written);
+
+    const new_line_count = std.mem.count(u8, written, "\n");
+
+    var lines: std.ArrayList([]const u8) = .empty;
+    try lines.ensureUnusedCapacity(gpa, new_line_count);
+    errdefer lines.deinit(gpa);
+
+    var it = std.mem.splitScalar(u8, written, '\n');
+
+    var len_len: usize = 0;
+    while (it.next()) |line| {
+        lines.appendAssumeCapacity(line);
         len_len += line.len;
     }
 
-    return .{ .len_len = len_len, .lines = try lines.toOwnedSlice(gpa) };
+    return .{
+        .len_len = len_len,
+        .lines = try lines.toOwnedSlice(gpa),
+        .data = written,
+    };
 }
 
 test lowerString {

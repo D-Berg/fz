@@ -374,6 +374,8 @@ fn Matrix(comptime T: type) type {
             };
         }
 
+        /// Change rows and cols size
+        /// doesnt change data buffer
         fn resize(self: *Self, rows: usize, cols: usize) void {
             assert(rows * cols < self.data.len);
             self.rows = rows;
