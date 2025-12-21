@@ -3,6 +3,7 @@ const build_options = @import("build_options");
 const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
 const tracy = @import("tracy.zig");
+const Io = std.Io;
 
 pub fn lowerStringAlloc(gpa: Allocator, ascii_str: []const u8) ![]const u8 {
     const tr = tracy.trace(@src());
@@ -49,6 +50,33 @@ pub fn lowerString(output: []u8, ascii_str: []const u8) []u8 {
 /// ctrl + char
 pub fn ctrl(k: u8) u8 {
     return k & 0x1f;
+}
+
+pub const Input = struct {
+    len_len: usize,
+    lines: []const []const u8,
+};
+
+pub fn getInput(gpa: Allocator, in: *Io.Reader) !Input {
+    const tr = tracy.trace(@src());
+    defer tr.end();
+
+    var len_len: usize = 0;
+    var lines: std.ArrayList([]const u8) = .empty;
+    errdefer {
+        for (lines.items) |line| {
+            gpa.free(line);
+        }
+        lines.deinit(gpa);
+    }
+
+    while (try in.takeDelimiter('\n')) |line| {
+        try lines.ensureUnusedCapacity(gpa, 1);
+        lines.appendAssumeCapacity(try gpa.dupe(u8, line));
+        len_len += line.len;
+    }
+
+    return .{ .len_len = len_len, .lines = try lines.toOwnedSlice(gpa) };
 }
 
 test lowerString {

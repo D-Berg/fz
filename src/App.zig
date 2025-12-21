@@ -10,6 +10,7 @@ const Match = @import("Match.zig");
 const util = @import("util.zig");
 const tracy = @import("tracy.zig");
 const cli = @import("cli.zig");
+const Input = util.Input;
 
 const updateMatches = Match.updateMatches;
 
@@ -27,8 +28,8 @@ search_buf: [MAX_SEARCH_LEN]u8,
 opts: cli.RunOptions,
 max_input_len: usize,
 
-pub fn init(gpa: Allocator, tty: *Tty, choices: []const []const u8, len_len: usize, opts: cli.RunOptions) !App {
-    assert(choices.len > 0);
+pub fn init(gpa: Allocator, tty: *Tty, input: Input, opts: cli.RunOptions) !App {
+    assert(input.lines.len > 0);
 
     var arena_impl: std.heap.ArenaAllocator = .init(gpa);
     errdefer arena_impl.deinit();
@@ -36,28 +37,29 @@ pub fn init(gpa: Allocator, tty: *Tty, choices: []const []const u8, len_len: usi
     const arena = arena_impl.allocator();
 
     var app: App = undefined;
-    const matches = try arena.alloc(Match, choices.len);
 
-    const lower_str_buf = try arena.alloc(u8, len_len);
-    const positions_buf = try arena.alloc(bool, len_len);
-    const bonus_buf = try arena.alloc(Match.Score, len_len);
+    const matches = try arena.alloc(Match, input.lines.len);
+
+    const lower_str_buf = try arena.alloc(u8, input.len_len);
+    const positions_buf = try arena.alloc(bool, input.len_len);
+    const bonus_buf = try arena.alloc(Match.Score, input.len_len);
 
     var max_input_len: usize = 0;
     var start: usize = 0;
-    for (choices, 0..) |choice, i| {
-        const end = start + choice.len;
-        if (choice.len >= max_input_len) max_input_len = choice.len;
-        Match.calculateBonus(bonus_buf[start..end], choice);
+    for (input.lines, 0..) |haystack, i| {
+        const end = start + haystack.len;
+        if (haystack.len >= max_input_len) max_input_len = haystack.len;
+        Match.calculateBonus(bonus_buf[start..end], haystack);
         matches[i] = Match{
-            .original_str = choice,
+            .original_str = haystack,
             .idx = i,
             .score = Match.score_min,
-            .lower_str = util.lowerString(lower_str_buf[start..end], choice),
+            .lower_str = util.lowerString(lower_str_buf[start..end], haystack),
             .positions = positions_buf[start..end],
             .bonus = bonus_buf[start..end],
         };
 
-        start += choice.len;
+        start += haystack.len;
     }
 
     app.tty = tty;
@@ -85,8 +87,7 @@ pub fn run(app: *App, io: Io, gpa: Allocator, result: *?[]const u8) !void {
 
     try app.draw();
 
-    const work_size = 8;
-    const work_queue_buf = try gpa.alloc(Match.Work, work_size);
+    const work_queue_buf = try gpa.alloc(Match.Work, 2048);
     defer gpa.free(work_queue_buf);
 
     var work_queue: Io.Queue(Match.Work) = .init(work_queue_buf);
@@ -94,6 +95,7 @@ pub fn run(app: *App, io: Io, gpa: Allocator, result: *?[]const u8) !void {
     var group: Io.Group = .init;
     defer group.cancel(io);
 
+    const work_size = 8;
     for (0..work_size) |_| {
         try group.concurrent(io, Match.worker, .{ io, gpa, &work_queue, app.max_input_len });
     }

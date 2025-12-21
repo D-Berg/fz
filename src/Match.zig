@@ -61,13 +61,9 @@ pub fn calculateBonus(bonus: []Score, haystack: []const u8) void {
 }
 
 pub const Work = struct {
-    matches: []Match,
+    match: *Match,
     needle: []const u8,
-    wg: *WaitGroup,
-
-    pub fn finnish(self: *const Work, io: Io) !void {
-        try self.wg.done(io);
-    }
+    result_queue: *Io.Queue(usize),
 };
 
 /// Returns a slice into matches and update each match score
@@ -91,9 +87,18 @@ pub fn updateMatches(
     var buf: [MAX_SEARCH_LEN]u8 = undefined;
     const needle = util.lowerString(&buf, search_str);
 
-    var wg: WaitGroup = .init;
-    try sendWork(io, &wg, needle, matches, work_queue);
-    try wg.wait(io);
+    var result_queue_buf: [2048]usize = undefined;
+    var result_queue: Io.Queue(usize) = .init(&result_queue_buf);
+
+    var send_work = try io.concurrent(sendWork, .{ io, work_queue, &result_queue, needle, matches });
+    defer send_work.cancel(io) catch {};
+
+    var finnished: usize = 0;
+    var result_buf: [64]usize = undefined;
+    while (result_queue.get(io, &result_buf, 1)) |result_count| {
+        for (result_buf[0..result_count]) |n| finnished += n;
+        if (finnished >= matches.len) break;
+    } else |err| return err;
 
     Match.sortMatches(matches, Match.orderByScore);
 
@@ -110,30 +115,19 @@ pub fn updateMatches(
 
 fn sendWork(
     io: Io,
-    wg: *WaitGroup,
+    work_queue: *Io.Queue(Work),
+    result_queue: *Io.Queue(usize),
     needle: []const u8,
     matches: []Match,
-    work_queue: *Io.Queue(Work),
 ) !void {
     const tr = tracy.trace(@src());
     defer tr.end();
-
-    const max_chunk_size: usize = matches.len / work_queue.capacity();
-    var remaining = matches[0..];
-    while (remaining.len > 0) {
-        try wg.add(io, 1);
-        const chunk_size = if (remaining.len > max_chunk_size)
-            max_chunk_size
-        else
-            remaining.len;
-
-        const chunk = remaining[0..chunk_size];
+    for (0..matches.len) |i| {
         try work_queue.putOne(io, .{
-            .matches = chunk[0..],
+            .match = &matches[i],
             .needle = needle,
-            .wg = wg,
+            .result_queue = result_queue,
         });
-        remaining = remaining[chunk_size..];
     }
 }
 
@@ -155,13 +149,12 @@ pub fn worker(io: Io, gpa: Allocator, worker_queue: *Io.Queue(Work), max_input_l
         return;
     };
 
-    while (worker_queue.getOne(io)) |work| {
-        defer work.finnish(io) catch {};
-
-        // std.debug.print("worker got work of size: {}\n", .{work.matches.len});
-        for (work.matches) |*match| {
-            match.updateScore(work.needle, &d, &m);
+    var work_buf: [256]Work = undefined;
+    while (worker_queue.get(io, &work_buf, 1)) |n| {
+        for (work_buf[0..n]) |work| {
+            work.match.updateScore(work.needle, &d, &m);
         }
+        work_buf[0].result_queue.putOne(io, n) catch return;
     } else |_| {
         tracy.message("worker got canceled");
     }

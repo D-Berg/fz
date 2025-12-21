@@ -9,6 +9,8 @@ const Match = @import("Match.zig");
 const cli = @import("cli.zig");
 const tracy = @import("tracy.zig");
 const util = @import("util.zig");
+const Input = util.Input;
+const getInput = util.getInput;
 
 var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
 
@@ -96,8 +98,7 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
             var stdout_buf: [8192]u8 = undefined;
             var stdout_writer = std.fs.File.stdout().writer(&stdout_buf);
             const stdout = &stdout_writer.interface;
-            const choices = input.lines;
-            if (try run(io, gpa, choices, input.len_len, opts)) |result| {
+            if (try run(io, gpa, input, opts)) |result| {
                 try stdout.print("{s}\n", .{result});
                 try stdout.flush();
             }
@@ -113,8 +114,7 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
 fn run(
     io: Io,
     gpa: Allocator,
-    lines: []const []const u8,
-    len_len: usize,
+    input: Input,
     opts: cli.RunOptions,
 ) !?[]const u8 {
     const tr = tracy.trace(@src());
@@ -125,7 +125,7 @@ fn run(
     var tty: Tty = try .init(io, "/dev/tty", &.{}, &tty_buf);
     defer tty.deinit();
 
-    var app: App = try .init(gpa, &tty, lines, len_len, opts);
+    var app: App = try .init(gpa, &tty, input, opts);
     defer app.deinit(gpa);
 
     var result: ?[]const u8 = null;
@@ -133,33 +133,6 @@ fn run(
     try app.run(io, gpa, &result);
 
     return result;
-}
-
-const Input = struct {
-    len_len: usize,
-    lines: []const []const u8,
-};
-
-fn getInput(gpa: Allocator, in: *Io.Reader) !Input {
-    const tr = tracy.trace(@src());
-    defer tr.end();
-
-    var len_len: usize = 0;
-    var lines: std.ArrayList([]const u8) = .empty;
-    errdefer {
-        for (lines.items) |line| {
-            gpa.free(line);
-        }
-        lines.deinit(gpa);
-    }
-
-    while (try in.takeDelimiter('\n')) |line| {
-        try lines.ensureUnusedCapacity(gpa, 1);
-        lines.appendAssumeCapacity(try gpa.dupe(u8, line));
-        len_len += line.len;
-    }
-
-    return .{ .len_len = len_len, .lines = try lines.toOwnedSlice(gpa) };
 }
 
 test "all" {
@@ -197,14 +170,13 @@ fn filter(io: Io, gpa: Allocator, arena: Allocator, input: Input, opts: cli.Filt
         start += haystack.len;
     }
 
-    const worker_count = 8; // TODO: dont hardcode it
-    const work_queue_buf = try arena.alloc(Match.Work, 8);
-
+    const work_queue_buf = try arena.alloc(Match.Work, 2048);
     var work_queue: Io.Queue(Match.Work) = .init(work_queue_buf);
 
     var group: Io.Group = .init;
     defer group.cancel(io);
 
+    const worker_count = std.Thread.getCpuCount() catch 1;
     for (0..worker_count) |_| {
         try group.concurrent(io, Match.worker, .{ io, gpa, &work_queue, max_input_len });
     }
