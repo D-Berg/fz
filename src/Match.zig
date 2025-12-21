@@ -5,7 +5,6 @@ const util = @import("util.zig");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
-const Semaphore = @import("Semaphore.zig");
 const tracy = @import("tracy.zig");
 
 /// Float
