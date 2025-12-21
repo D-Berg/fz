@@ -36,7 +36,7 @@ lower_str: []const u8,
 positions: []bool,
 bonus: []Score,
 
-pub fn calculateBonus(bonus: []Score, haystack: []const u8) void {
+pub fn calculateBonus(bonus: []Score, haystack: []const u8) []Score {
     const tr = tracy.trace(@src());
     defer tr.end();
 
@@ -57,6 +57,8 @@ pub fn calculateBonus(bonus: []Score, haystack: []const u8) void {
 
         last_char = c;
     }
+
+    return bonus;
 }
 
 pub const Work = struct {

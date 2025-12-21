@@ -4,6 +4,8 @@ const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
 const tracy = @import("tracy.zig");
 const Io = std.Io;
+const Match = @import("Match.zig");
+const util = @import("util.zig");
 
 pub fn lowerStringAlloc(gpa: Allocator, ascii_str: []const u8) ![]const u8 {
     const tr = tracy.trace(@src());
@@ -53,8 +55,9 @@ pub fn ctrl(k: u8) u8 {
 }
 
 pub const Input = struct {
-    len_len: usize,
-    lines: []const []const u8,
+    max_input_len: usize = 0,
+    matches: []Match,
+    fba_buf: []u8,
     data: []const u8,
 };
 
@@ -65,29 +68,55 @@ pub fn getInput(gpa: Allocator, in: *Io.Reader) !Input {
     var aw: Io.Writer.Allocating = .init(gpa);
     errdefer aw.deinit();
 
-    _ = try in.streamRemaining(&aw.writer);
+    const byte_count = try in.streamRemaining(&aw.writer);
 
     const written = try aw.toOwnedSlice();
     errdefer gpa.free(written);
 
     const new_line_count = std.mem.count(u8, written, "\n");
 
-    var lines: std.ArrayList([]const u8) = .empty;
-    try lines.ensureUnusedCapacity(gpa, new_line_count);
-    errdefer lines.deinit(gpa);
+    const fba_buf = try gpa.alloc(u8, (@sizeOf(u8) + @sizeOf(bool) + @sizeOf(Match.Score)) * byte_count);
+    errdefer gpa.free(fba_buf);
+
+    var fba_impl: std.heap.FixedBufferAllocator = .init(fba_buf);
+    const fba = fba_impl.allocator();
+
+    const lower_str_buf = try fba.alloc(u8, byte_count);
+    const positions_buf = try fba.alloc(bool, byte_count);
+    const bonus_buf = try fba.alloc(Match.Score, byte_count);
+
+    var matches: std.ArrayList(Match) = .empty;
+    try matches.ensureUnusedCapacity(gpa, new_line_count);
+    errdefer matches.deinit(gpa);
+
+    var max_input_len: usize = 0;
+    var start: usize = 0;
+    var i: usize = 0;
 
     var it = std.mem.splitScalar(u8, written, '\n');
-
-    var len_len: usize = 0;
     while (it.next()) |line| {
-        lines.appendAssumeCapacity(line);
-        len_len += line.len;
+        if (line.len == 0) continue;
+        if (line.len > max_input_len) max_input_len = line.len;
+
+        const end = start + line.len;
+        matches.appendAssumeCapacity(Match{
+            .idx = i,
+            .bonus = Match.calculateBonus(bonus_buf[start..end], line),
+            .original_str = line,
+            .lower_str = util.lowerString(lower_str_buf[start..end], line),
+            .positions = positions_buf[start..end],
+            .score = Match.score_min,
+        });
+
+        start += line.len;
+        i += 1;
     }
 
     return .{
-        .len_len = len_len,
-        .lines = try lines.toOwnedSlice(gpa),
+        .max_input_len = max_input_len,
+        .matches = try matches.toOwnedSlice(gpa),
         .data = written,
+        .fba_buf = fba_buf,
     };
 }
 

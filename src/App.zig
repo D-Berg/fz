@@ -18,7 +18,6 @@ const App = @This();
 const MAX_SEARCH_LEN = build_options.MAX_SEARCH_LEN;
 
 tty: *Tty,
-arena_state: std.heap.ArenaAllocator.State,
 matches: []Match,
 /// window into matches
 window: []const Match,
@@ -28,54 +27,16 @@ search_buf: [MAX_SEARCH_LEN]u8,
 opts: cli.RunOptions,
 max_input_len: usize,
 
-pub fn init(gpa: Allocator, tty: *Tty, input: Input, opts: cli.RunOptions) !App {
-    assert(input.lines.len > 0);
-
-    var arena_impl: std.heap.ArenaAllocator = .init(gpa);
-    errdefer arena_impl.deinit();
-
-    const arena = arena_impl.allocator();
-
+pub fn init(tty: *Tty, input: Input, opts: cli.RunOptions) App {
     var app: App = undefined;
-
-    const matches = try arena.alloc(Match, input.lines.len);
-
-    const lower_str_buf = try arena.alloc(u8, input.len_len);
-    const positions_buf = try arena.alloc(bool, input.len_len);
-    const bonus_buf = try arena.alloc(Match.Score, input.len_len);
-
-    var max_input_len: usize = 0;
-    var start: usize = 0;
-    for (input.lines, 0..) |haystack, i| {
-        const end = start + haystack.len;
-        if (haystack.len >= max_input_len) max_input_len = haystack.len;
-        Match.calculateBonus(bonus_buf[start..end], haystack);
-        matches[i] = Match{
-            .original_str = haystack,
-            .idx = i,
-            .score = Match.score_min,
-            .lower_str = util.lowerString(lower_str_buf[start..end], haystack),
-            .positions = positions_buf[start..end],
-            .bonus = bonus_buf[start..end],
-        };
-
-        start += haystack.len;
-    }
-
     app.tty = tty;
     app.selected = 0;
-    app.matches = matches;
+    app.matches = input.matches;
     app.search_buf = undefined;
-    app.arena_state = arena_impl.state;
-    app.window = matches[0..];
+    app.window = input.matches[0..];
     app.opts = opts;
-    app.max_input_len = max_input_len;
+    app.max_input_len = input.max_input_len;
     return app;
-}
-
-pub fn deinit(app: *App, gpa: Allocator) void {
-    var arena = app.arena_state.promote(gpa);
-    arena.deinit();
 }
 
 pub fn run(app: *App, io: Io, gpa: Allocator, result: *?[]const u8) !void {

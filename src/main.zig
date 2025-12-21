@@ -125,8 +125,7 @@ fn run(
     var tty: Tty = try .init(io, "/dev/tty", &.{}, &tty_buf);
     defer tty.deinit();
 
-    var app: App = try .init(gpa, &tty, input, opts);
-    defer app.deinit(gpa);
+    var app: App = .init(&tty, input, opts);
 
     var result: ?[]const u8 = null;
 
@@ -144,32 +143,6 @@ fn filter(io: Io, gpa: Allocator, arena: Allocator, input: Input, opts: cli.Filt
     var stdout_writer = std.fs.File.stdout().writer(&stdout_buf);
     const stdout = &stdout_writer.interface;
 
-    const matches = try arena.alloc(Match, input.lines.len);
-
-    const lower_str_buf = try arena.alloc(u8, input.len_len);
-    const positions_buf = try arena.alloc(bool, input.len_len);
-    const bonus_buf = try arena.alloc(Match.Score, input.len_len);
-
-    var max_input_len: usize = 0;
-    var start: usize = 0;
-    for (input.lines, 0..) |haystack, i| {
-        const end = start + haystack.len;
-        if (haystack.len >= max_input_len) max_input_len = haystack.len;
-        const bonus = bonus_buf[start..end];
-        Match.calculateBonus(bonus, haystack); // TODO: calc bonus
-
-        matches[i] = Match{
-            .original_str = haystack,
-            .idx = i,
-            .score = Match.score_min,
-            .lower_str = util.lowerString(lower_str_buf[start..end], haystack),
-            .positions = positions_buf[start..end],
-            .bonus = bonus,
-        };
-
-        start += haystack.len;
-    }
-
     const work_queue_buf = try arena.alloc(Match.Work, 2048);
     var work_queue: Io.Queue(Match.Work) = .init(work_queue_buf);
 
@@ -178,10 +151,10 @@ fn filter(io: Io, gpa: Allocator, arena: Allocator, input: Input, opts: cli.Filt
 
     const worker_count = std.Thread.getCpuCount() catch 1;
     for (0..worker_count) |_| {
-        try group.concurrent(io, Match.worker, .{ io, gpa, &work_queue, max_input_len });
+        try group.concurrent(io, Match.worker, .{ io, gpa, &work_queue, input.max_input_len });
     }
 
-    const window = try Match.updateMatches(io, opts.search_str, matches, &work_queue);
+    const window = try Match.updateMatches(io, opts.search_str, input.matches, &work_queue);
     for (window) |match| {
         if (opts.show_scores) {
             try stdout.print("({d:.2}) ", .{match.score});
