@@ -10,7 +10,7 @@ pub const RunOptions = struct {
     show_scores: bool = false,
 };
 
-const FilterOptions = struct {
+pub const FilterOptions = struct {
     search_str: []const u8 = &.{},
     show_scores: bool = false,
 };

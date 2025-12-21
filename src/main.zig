@@ -88,72 +88,26 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
     const stdin = &stdin_reader.interface;
 
     // TODO: change to std.Io.File when writing works
-    var stdout_buf: [8192]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buf);
-    const stdout = &stdout_writer.interface;
 
     const input = try getInput(arena, stdin);
-    const choices = input.lines;
 
     switch (commands) {
         .run => |opts| {
+            var stdout_buf: [8192]u8 = undefined;
+            var stdout_writer = std.fs.File.stdout().writer(&stdout_buf);
+            const stdout = &stdout_writer.interface;
+            const choices = input.lines;
             if (try run(io, gpa, choices, input.len_len, opts)) |result| {
                 try stdout.print("{s}\n", .{result});
                 try stdout.flush();
             }
-            if (builtin.mode == .ReleaseFast) std.process.exit(0);
         },
         .filter => |opts| {
-            const matches = try arena.alloc(Match, choices.len);
-
-            const lower_str_buf = try arena.alloc(u8, input.len_len);
-            const positions_buf = try arena.alloc(bool, input.len_len);
-            const bonus_buf = try arena.alloc(Match.Score, input.len_len);
-
-            var max_input_len: usize = 0;
-            var start: usize = 0;
-            for (choices, 0..) |choice, i| {
-                const end = start + choice.len;
-                if (choice.len >= max_input_len) max_input_len = choice.len;
-                const bonus = bonus_buf[start..end];
-                Match.calculateBonus(bonus, choice); // TODO: calc bonus
-
-                matches[i] = Match{
-                    .original_str = choice,
-                    .idx = i,
-                    .score = Match.score_min,
-                    .lower_str = util.lowerString(lower_str_buf[start..end], choice),
-                    .positions = positions_buf[start..end],
-                    .bonus = bonus,
-                };
-
-                start += choice.len;
-            }
-
-            const worker_count = 8; // TODO: dont hardcode it
-            const work_queue_buf = try arena.alloc(Match.Work, 8);
-
-            var work_queue: Io.Queue(Match.Work) = .init(work_queue_buf);
-
-            var group: Io.Group = .init;
-            defer group.cancel(io);
-
-            for (0..worker_count) |_| {
-                try group.concurrent(io, Match.worker, .{ io, gpa, &work_queue, max_input_len });
-            }
-
-            const window = try Match.updateMatches(io, opts.search_str, matches, &work_queue);
-            for (window) |match| {
-                if (opts.show_scores) {
-                    try stdout.print("({d:.2}) ", .{match.score});
-                }
-                try stdout.print("{s}\n", .{match.original_str});
-            }
-            try stdout.flush();
-
-            if (builtin.mode == .ReleaseFast) std.process.exit(0);
+            try filter(io, gpa, arena, input, opts);
         },
     }
+
+    if (builtin.mode == .ReleaseFast) std.process.exit(0);
 }
 
 fn run(
@@ -210,4 +164,57 @@ fn getInput(gpa: Allocator, in: *Io.Reader) !Input {
 
 test "all" {
     std.testing.refAllDeclsRecursive(@This());
+}
+
+fn filter(io: Io, gpa: Allocator, arena: Allocator, input: Input, opts: cli.FilterOptions) !void {
+    var stdout_buf: [8192]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&stdout_buf);
+    const stdout = &stdout_writer.interface;
+
+    const matches = try arena.alloc(Match, input.lines.len);
+
+    const lower_str_buf = try arena.alloc(u8, input.len_len);
+    const positions_buf = try arena.alloc(bool, input.len_len);
+    const bonus_buf = try arena.alloc(Match.Score, input.len_len);
+
+    var max_input_len: usize = 0;
+    var start: usize = 0;
+    for (input.lines, 0..) |haystack, i| {
+        const end = start + haystack.len;
+        if (haystack.len >= max_input_len) max_input_len = haystack.len;
+        const bonus = bonus_buf[start..end];
+        Match.calculateBonus(bonus, haystack); // TODO: calc bonus
+
+        matches[i] = Match{
+            .original_str = haystack,
+            .idx = i,
+            .score = Match.score_min,
+            .lower_str = util.lowerString(lower_str_buf[start..end], haystack),
+            .positions = positions_buf[start..end],
+            .bonus = bonus,
+        };
+
+        start += haystack.len;
+    }
+
+    const worker_count = 8; // TODO: dont hardcode it
+    const work_queue_buf = try arena.alloc(Match.Work, 8);
+
+    var work_queue: Io.Queue(Match.Work) = .init(work_queue_buf);
+
+    var group: Io.Group = .init;
+    defer group.cancel(io);
+
+    for (0..worker_count) |_| {
+        try group.concurrent(io, Match.worker, .{ io, gpa, &work_queue, max_input_len });
+    }
+
+    const window = try Match.updateMatches(io, opts.search_str, matches, &work_queue);
+    for (window) |match| {
+        if (opts.show_scores) {
+            try stdout.print("({d:.2}) ", .{match.score});
+        }
+        try stdout.print("{s}\n", .{match.original_str});
+    }
+    try stdout.flush();
 }
