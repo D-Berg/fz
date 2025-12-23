@@ -8,6 +8,7 @@
         .tracy = .{
             .url = "git+https://github.com/wolfpld/tracy.git?ref=v0.13.0#e6b9ea460993a6f093283055ef3c98025b19f909",
             .hash = "N-V-__8AAHW7KwHH_eNEviRWLkRfsxpWFrdOYM9f8VeCin4q",
+            .lazy = true,
         },
     },
 }

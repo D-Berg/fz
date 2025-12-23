@@ -43,21 +43,6 @@ pub fn build(b: *std.Build) void {
     build_options.addOption(bool, "enable_tracy_callstack", tracy_callstack);
     build_options.addOption([]const u8, "version", version);
 
-    const tracy_dep = b.dependency("tracy", .{});
-    const tracy_lib = b.addLibrary(.{
-        .name = "tracy",
-        .root_module = b.createModule(.{
-            .target = target,
-            .optimize = optimize,
-            .link_libcpp = true,
-        }),
-        .linkage = .static,
-    });
-    tracy_lib.root_module.addIncludePath(tracy_dep.path("public"));
-    tracy_lib.root_module.addCSourceFile(.{
-        .file = tracy_dep.path("public/TracyClient.cpp"),
-    });
-
     const exe = b.addExecutable(.{
         .name = @tagName(manifest.name),
         .root_module = b.createModule(.{
@@ -71,10 +56,25 @@ pub fn build(b: *std.Build) void {
     });
 
     exe.root_module.addOptions("build_options", build_options);
+    if (b.lazyDependency("tracy", .{})) |tracy_dep| {
+        const tracy_lib = b.addLibrary(.{
+            .name = "tracy",
+            .root_module = b.createModule(.{
+                .target = target,
+                .optimize = optimize,
+                .link_libcpp = true,
+            }),
+            .linkage = .static,
+        });
+        tracy_lib.root_module.addIncludePath(tracy_dep.path("public"));
+        tracy_lib.root_module.addCSourceFile(.{
+            .file = tracy_dep.path("public/TracyClient.cpp"),
+        });
 
-    if (enable_tracy) {
-        exe.root_module.linkLibrary(tracy_lib);
-        tracy_lib.root_module.addCMacro("TRACY_ENABLE", "1");
+        if (enable_tracy) {
+            exe.root_module.linkLibrary(tracy_lib);
+            tracy_lib.root_module.addCMacro("TRACY_ENABLE", "1");
+        }
     }
 
     b.installArtifact(exe);
