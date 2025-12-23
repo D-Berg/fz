@@ -80,7 +80,10 @@ pub fn updateMatches(
     if (search_str.len == 0) {
         // restore to original
         Match.sortMatches(matches, Match.orderByIdx);
-        for (matches) |*match| match.score = Match.score_min;
+        for (matches) |*match| {
+            match.score = Match.score_min;
+            @memset(match.positions, false);
+        }
         return matches[0..];
     }
 
@@ -166,6 +169,7 @@ pub fn updateScore(self: *Match, needle: []const u8, d: *Matrix(Score), m: *Matr
 
     // reset score
     self.score = score_min;
+    @memset(self.positions, false);
 
     if (hasMatch(self.original_str, needle)) {
         d.resize(needle.len, self.lower_str.len);
@@ -297,7 +301,6 @@ fn updatePositions(match: *Match, needle: []const u8, d: *Matrix(Score), m: *Mat
 
                 break;
             }
-            match.positions[i] = false;
         }
     }
 }
