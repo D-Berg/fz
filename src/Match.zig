@@ -212,9 +212,9 @@ fn updateMatrixes(match: *Match, needle: []const u8, d: *Matrix(Score), m: *Matr
     const tr = tracy.trace(@src());
     defer tr.end();
 
-    match.updateRow(0, needle, d.row(0), m.row(0), d.row(0), d.row(0));
+    match.updateRow(0, needle, d.row(0), m.row(0), d.row(0), m.row(0));
     for (1..needle.len) |i| {
-        match.updateRow(i, needle, d.row(i), m.row(i), d.row(i - 1), d.row(i - 1));
+        match.updateRow(i, needle, d.row(i), m.row(i), d.row(i - 1), m.row(i - 1));
     }
 }
 
