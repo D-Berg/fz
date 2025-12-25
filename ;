@@ -124,14 +124,15 @@ fn sendWork(
 ) !void {
     const tr = tracy.trace(@src());
     defer tr.end();
-    const batch_size = 512;
-    var i: usize = 0;
+    const batch_size = 64;
 
-    while (i < matches.len) : (i += batch_size) {
-        const end = @min(i + batch_size, matches.len);
-        const current_batch = matches[i..end];
+    var remaining = matches[0..];
+    // Create a temporary array on the stack to hold the Work items
+    var work_items: [batch_size]Work = undefined;
+    while (remaining.len > 0) {
+        const batch_count = @min(batch_size, remaining.len);
+        const current_batch = remaining[0..batch_count]
 
-        var work_items: [batch_size]Work = undefined;
         for (current_batch, 0..) |*match, batch_idx| {
             work_items[batch_idx] = .{
                 .match = match,
@@ -140,7 +141,8 @@ fn sendWork(
             };
         }
 
-        assert(try work_queue.put(io, work_items[0..current_batch.len], current_batch.len) == current_batch.len);
+        // Submit the whole slice to the queue at once
+        try work_queue.put(io, work_items[0..current_batch.len]);
     }
 }
 
