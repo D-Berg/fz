@@ -73,8 +73,6 @@ pub fn getInput(gpa: Allocator, in: *Io.Reader) !Input {
     const written = try aw.toOwnedSlice();
     errdefer gpa.free(written);
 
-    const new_line_count = std.mem.count(u8, written, "\n");
-
     const fba_buf = try gpa.alloc(u8, (@sizeOf(u8) + @sizeOf(bool) + @sizeOf(Match.Score)) * byte_count);
     errdefer gpa.free(fba_buf);
 
@@ -86,7 +84,6 @@ pub fn getInput(gpa: Allocator, in: *Io.Reader) !Input {
     const bonus_buf = try fba.alloc(Match.Score, byte_count);
 
     var matches: std.ArrayList(Match) = .empty;
-    try matches.ensureUnusedCapacity(gpa, new_line_count);
     errdefer matches.deinit(gpa);
 
     var max_input_len: usize = 0;
@@ -99,7 +96,7 @@ pub fn getInput(gpa: Allocator, in: *Io.Reader) !Input {
         if (line.len > max_input_len) max_input_len = line.len;
 
         const end = start + line.len;
-        matches.appendAssumeCapacity(Match{
+        try matches.append(gpa, Match{
             .idx = i,
             .bonus = bonus_buf[start..end],
             .original_str = line,
