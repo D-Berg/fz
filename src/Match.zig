@@ -30,10 +30,11 @@ const Match = @This();
 original_str: []const u8,
 idx: usize,
 score: Score = score_min,
-/// memory owned by match
 lower_str: []u8,
+lower_str_calculated: bool = false,
 positions: []bool,
 bonus: []Score,
+bonus_calculated: bool = false,
 
 pub fn calculateBonus(bonus: []Score, haystack: []const u8) void {
     const tr = tracy.trace(@src());
@@ -185,7 +186,10 @@ fn matchPositions(
     const tr = tracy.trace(@src());
     defer tr.end();
 
-    match.lower_str = util.lowerString(match.lower_str, match.original_str);
+    if (!match.lower_str_calculated) {
+        match.lower_str = util.lowerString(match.lower_str, match.original_str);
+        match.lower_str_calculated = true;
+    }
 
     if (needle.len > match.lower_str.len or match.lower_str.len > MAX_SEARCH_LEN) {
         match.score = score_min;
@@ -202,7 +206,10 @@ fn matchPositions(
         return;
     }
 
-    calculateBonus(match.bonus, match.original_str);
+    if (!match.bonus_calculated) {
+        calculateBonus(match.bonus, match.original_str);
+        match.bonus_calculated = true;
+    }
 
     match.updateMatrixes(needle, d, m);
     match.updatePositions(needle, d, m);
