@@ -31,11 +31,11 @@ original_str: []const u8,
 idx: usize,
 score: Score = score_min,
 /// memory owned by match
-lower_str: []const u8,
+lower_str: []u8,
 positions: []bool,
 bonus: []Score,
 
-pub fn calculateBonus(bonus: []Score, haystack: []const u8) []Score {
+pub fn calculateBonus(bonus: []Score, haystack: []const u8) void {
     const tr = tracy.trace(@src());
     defer tr.end();
 
@@ -56,8 +56,6 @@ pub fn calculateBonus(bonus: []Score, haystack: []const u8) []Score {
 
         last_char = c;
     }
-
-    return bonus;
 }
 
 pub const Work = struct {
@@ -187,6 +185,8 @@ fn matchPositions(
     const tr = tracy.trace(@src());
     defer tr.end();
 
+    match.lower_str = util.lowerString(match.lower_str, match.original_str);
+
     if (needle.len > match.lower_str.len or match.lower_str.len > MAX_SEARCH_LEN) {
         match.score = score_min;
         return;
@@ -201,6 +201,8 @@ fn matchPositions(
         match.score = score_max;
         return;
     }
+
+    calculateBonus(match.bonus, match.original_str);
 
     match.updateMatrixes(needle, d, m);
     match.updatePositions(needle, d, m);

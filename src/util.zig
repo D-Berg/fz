@@ -101,9 +101,9 @@ pub fn getInput(gpa: Allocator, in: *Io.Reader) !Input {
         const end = start + line.len;
         matches.appendAssumeCapacity(Match{
             .idx = i,
-            .bonus = Match.calculateBonus(bonus_buf[start..end], line),
+            .bonus = bonus_buf[start..end],
             .original_str = line,
-            .lower_str = util.lowerString(lower_str_buf[start..end], line),
+            .lower_str = lower_str_buf[start..end],
             .positions = positions_buf[start..end],
             .score = Match.score_min,
         });
