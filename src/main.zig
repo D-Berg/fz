@@ -36,37 +36,37 @@ pub fn main() !void {
 
     const arena = arena_impl.allocator();
 
+    var threaded: std.Io.Threaded = .init(gpa, .{});
+    defer threaded.deinit();
+
+    const io = threaded.io();
+
     const args = try std.process.argsAlloc(arena);
 
     if (tracy.enable_allocation) {
         var gpa_tracy = tracy.tracyAllocator(gpa);
-        return mainArgs(gpa_tracy.allocator(), arena, args);
+        return mainArgs(io, gpa_tracy.allocator(), arena, args);
     }
 
-    try mainArgs(gpa, arena, args);
+    try mainArgs(io, gpa, arena, args);
 }
 
-fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
+fn mainArgs(io: Io, gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
     const tr = tracy.trace(@src());
     defer tr.end();
-
-    var threaded: std.Io.Threaded = .init(gpa);
-    defer threaded.deinit();
-
-    const io = threaded.io();
 
     const commands = try cli.parse(args, null);
 
     var child: ?std.process.Child = null;
     defer if (child) |*c| {
-        _ = c.kill() catch {};
+        _ = c.kill(io) catch {};
     };
 
     var env = try std.process.getEnvMap(arena);
 
     var stdin_buf: [4 * 65_536]u8 = undefined;
     var stdin_reader = blk: {
-        if (std.posix.isatty(std.posix.STDIN_FILENO)) {
+        if (try Io.File.stdin().isTty(io)) {
             var child_argv: std.ArrayList([]const u8) = .empty;
 
             const argv_str = env.get("FZF_DEFAULT_COMMAND") orelse "find . -type f";
@@ -79,7 +79,7 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
             child = std.process.Child.init(child_argv.items, gpa);
             child.?.stdout_behavior = .Pipe;
 
-            try child.?.spawn();
+            try child.?.spawn(io);
 
             break :blk child.?.stdout.?.reader(io, &stdin_buf);
         }
@@ -96,7 +96,7 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
     switch (commands) {
         .run => |opts| {
             var stdout_buf: [8192]u8 = undefined;
-            var stdout_writer = std.fs.File.stdout().writer(&stdout_buf);
+            var stdout_writer = Io.File.stdout().writer(io, &stdout_buf);
             const stdout = &stdout_writer.interface;
             if (try run(io, gpa, input, opts)) |result| {
                 try stdout.print("{s}\n", .{result});
@@ -108,7 +108,7 @@ fn mainArgs(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
         },
         .version => |version| {
             var stdout_buf: [64]u8 = undefined;
-            var stdout_writer = std.fs.File.stdout().writer(&stdout_buf);
+            var stdout_writer = Io.File.stdout().writer(io, &stdout_buf);
             const stdout: *Io.Writer = &stdout_writer.interface;
 
             try stdout.print("{s}\n", .{version});
@@ -148,7 +148,7 @@ test "all" {
 
 fn filter(io: Io, gpa: Allocator, arena: Allocator, input: Input, opts: cli.FilterOptions) !void {
     var stdout_buf: [8192]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buf);
+    var stdout_writer = Io.File.stdout().writer(io, &stdout_buf);
     const stdout = &stdout_writer.interface;
 
     const work_queue_buf = try arena.alloc(Match.Work, input.matches.len);

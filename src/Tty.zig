@@ -1,21 +1,23 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
+const Io = std.Io;
+
 const Tty = @This();
 
-in: std.fs.File.Reader,
-out: std.fs.File.Writer,
+in: Io.File.Reader,
+out: Io.File.Writer,
 original_termios: std.posix.termios,
 fg_col: usize = 0,
 max_width: usize = 80,
 max_height: usize = 25,
 
 pub fn init(io: std.Io, path: []const u8, read_buf: []u8, write_buf: []u8) !Tty {
-    const tty_file = try std.fs.openFileAbsolute(path, .{ .mode = .read_write });
-    errdefer tty_file.close();
+    const tty_file = try Io.Dir.cwd().openFile(io, path, .{ .mode = .read_write });
+    errdefer tty_file.close(io);
 
     const reader = tty_file.reader(io, read_buf);
-    const writer = tty_file.writer(write_buf);
+    const writer = tty_file.writer(io, write_buf);
 
     var termios = try std.posix.tcgetattr(tty_file.handle);
     var tty: Tty = .{
